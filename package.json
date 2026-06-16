@@ -1,0 +1,15 @@
+{
+  "name": "pirate-harbor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pirate Harbor — A desktop game launcher",
+  "scripts": {
+    "dev": "pnpm --filter desktop tauri dev",
+    "build": "pnpm --filter desktop tauri build",
+    "test": "pnpm --filter desktop vitest"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
