@@ -1,17 +1,23 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  Library,
   Gamepad2,
+  Library,
+  FolderOpen,
   BookOpen,
+  Trophy,
+  User,
   Settings,
   Anchor,
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Library",   icon: Library,   to: "/library"   },
-  { label: "Launcher",  icon: Gamepad2,  to: "/launcher"  },
-  { label: "Journal",   icon: BookOpen,  to: "/journal"   },
-  { label: "Settings",  icon: Settings,  to: "/settings"  },
+  { label: "Launcher",     icon: Gamepad2,    to: "/launcher",     deferred: false },
+  { label: "Library",      icon: Library,     to: "/library",      deferred: false },
+  { label: "Collections",  icon: FolderOpen,  to: "/collections",  deferred: true  },
+  { label: "Journal",      icon: BookOpen,    to: "/journal",      deferred: true  },
+  { label: "Milestones",   icon: Trophy,      to: "/milestones",   deferred: true  },
+  { label: "Identity",     icon: User,        to: "/identity",     deferred: true  },
+  { label: "Settings",     icon: Settings,    to: "/settings",     deferred: false },
 ];
 
 export default function Sidebar() {
@@ -54,7 +60,7 @@ export default function Sidebar() {
             color: "var(--color-text-primary)",
           }}
         >
-          Atlas OS
+          Pirate Harbor
         </span>
       </div>
 
@@ -69,8 +75,13 @@ export default function Sidebar() {
           overflowY: "auto",
         }}
       >
-        {NAV_ITEMS.map(({ label, icon: Icon, to }) => {
+        {NAV_ITEMS.map(({ label, icon: Icon, to, deferred }) => {
           const isActive = location.pathname.startsWith(to);
+          const baseColor = deferred
+            ? "var(--color-text-disabled)"
+            : isActive
+            ? "var(--color-text-primary)"
+            : "var(--color-text-secondary)";
           return (
             <NavLink
               key={to}
@@ -82,12 +93,8 @@ export default function Sidebar() {
                 padding: "8px 12px",
                 borderRadius: "var(--radius-md)",
                 textDecoration: "none",
-                color: isActive
-                  ? "var(--color-text-primary)"
-                  : "var(--color-text-secondary)",
-                background: isActive
-                  ? "rgba(255,255,255,0.06)"
-                  : "transparent",
+                color: baseColor,
+                background: isActive ? "rgba(255,255,255,0.06)" : "transparent",
                 transition: `background var(--duration-fast) var(--ease-default),
                              color var(--duration-fast) var(--ease-default)`,
                 fontSize: 14,
@@ -98,15 +105,14 @@ export default function Sidebar() {
                   (e.currentTarget as HTMLAnchorElement).style.background =
                     "rgba(255,255,255,0.04)";
                   (e.currentTarget as HTMLAnchorElement).style.color =
-                    "var(--color-text-primary)";
+                    deferred ? "var(--color-text-muted)" : "var(--color-text-primary)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   (e.currentTarget as HTMLAnchorElement).style.background =
                     "transparent";
-                  (e.currentTarget as HTMLAnchorElement).style.color =
-                    "var(--color-text-secondary)";
+                  (e.currentTarget as HTMLAnchorElement).style.color = baseColor;
                 }
               }}
             >
