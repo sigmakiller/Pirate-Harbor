@@ -1,61 +1,64 @@
 @import "tailwindcss";
 
 /* ============================================================
-   PIRATE HARBOR — Design System
-   Dark-first, inspired by Steam, Playnite, Heroic, Discord
+   ATLAS OS — Design System
+   "A personal operating system for preserving gaming history."
+   Monochrome. Typography-driven. The museum never changes.
    ============================================================ */
 
 @theme {
-  /* ── Color Palette ── */
-  --color-base:       #0a0a0f;
-  --color-surface:    #13131a;
-  --color-elevated:   #1a1a25;
-  --color-border:     #2a2a3a;
-  --color-border-sub: #1e1e2e;
-
-  /* Accent — vibrant purple-blue */
-  --color-accent:       #7c3aed;
-  --color-accent-hover: #6d28d9;
-  --color-accent-muted: rgba(124, 58, 237, 0.15);
-  --color-accent-glow:  rgba(124, 58, 237, 0.35);
+  /* ── OS Color Palette (Monochrome only) ── */
+  --color-base:        #050505;
+  --color-surface:     #101010;
+  --color-elevated:    #171717;
+  --color-border:      rgba(255, 255, 255, 0.08);
+  --color-border-sub:  rgba(255, 255, 255, 0.04);
 
   /* Text hierarchy */
-  --color-text-primary:   #ffffff;
-  --color-text-secondary: #a1a1aa;
-  --color-text-muted:     #71717a;
-  --color-text-disabled:  #3f3f46;
+  --color-text-primary:   #F5F5F5;
+  --color-text-secondary: #A1A1A1;
+  --color-text-muted:     #666666;
+  --color-text-disabled:  #333333;
 
-  /* Status colors */
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger:  #ef4444;
-  --color-info:    #3b82f6;
-
-  /* Game status badge colors */
-  --color-status-unplayed:  #71717a;
-  --color-status-playing:   #22c55e;
-  --color-status-completed: #7c3aed;
-  --color-status-dropped:   #ef4444;
+  /* Status — minimal, desaturated */
+  --color-status-unplayed:  #555555;
+  --color-status-playing:   #888888;
+  --color-status-completed: #AAAAAA;
+  --color-status-dropped:   #444444;
 
   /* ── Typography ── */
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans:    "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Space Grotesk", "Inter", sans-serif;
 
-  /* ── Border Radius ── */
-  --radius-sm:   6px;
-  --radius-md:   8px;
-  --radius-lg:   12px;
-  --radius-xl:   16px;
-  --radius-2xl:  20px;
+  /* ── Type Scale (editorial, titles dominate) ── */
+  --text-hero:   clamp(64px, 8vw, 120px);
+  --text-h1:     clamp(48px, 5vw, 96px);
+  --text-h2:     48px;
+  --text-h3:     28px;
+  --text-card:   18px;
+  --text-body:   16px;
+  --text-meta:   12px;
+
+  /* ── Layout ── */
+  --sidebar-width:      240px;
+  --topbar-height:      56px;
+  --grid-columns:       12;
+  --grid-margin:        72px;
+  --grid-gutter:        32px;
+  --section-spacing:    128px;
+
+  /* ── Border Radius (minimal) ── */
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   8px;
   --radius-full: 9999px;
 
-  /* ── Transitions ── */
-  --transition-fast:   150ms ease;
-  --transition-normal: 250ms ease;
-  --transition-slow:   350ms ease;
-
-  /* ── Sidebar ── */
-  --sidebar-width: 240px;
+  /* ── Motion (Atlas OS motion rules) ── */
+  --duration-fast:   150ms;
+  --duration-normal: 220ms;
+  --duration-layout: 300ms;
+  --ease-default:    ease;
 }
 
 /* ── Global Reset & Base ── */
@@ -76,59 +79,73 @@ body {
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   line-height: 1.5;
-  overflow: hidden; /* Tauri window — no body scroll */
+  overflow: hidden;
 }
 
 #root {
   width: 100vw;
   height: 100vh;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-/* ── Scrollbar Styling ── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+/* ── Scrollbar (minimal) ── */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.12); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: var(--radius-full);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
-}
-
-/* ── Focus Styles ── */
+/* ── Focus ── */
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 1px solid rgba(255,255,255,0.4);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
 
 /* ── Selection ── */
 ::selection {
-  background-color: var(--color-accent-muted);
+  background-color: rgba(255,255,255,0.12);
   color: var(--color-text-primary);
 }
 
-/* ── Utility Classes ── */
-.glass {
-  background: rgba(19, 19, 26, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+/* ── Utility: Glass (Game Detail only) ── */
+.atlas-glass {
+  background: rgba(16, 16, 16, 0.80);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border);
 }
 
-.text-gradient {
-  background: linear-gradient(135deg, #a78bfa, #7c3aed);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* ── Utility: Card ── */
+.atlas-card {
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ── Utility: Fade transition ── */
+.atlas-transition {
+  transition: opacity var(--duration-normal) var(--ease-default),
+              transform var(--duration-normal) var(--ease-default);
+}
+
+/* ── Utility: Editorial title ── */
+.atlas-title {
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.0;
+  color: var(--color-text-primary);
+}
+
+/* ── Allowed motion only: fade, opacity, scale(0.98→1), small translate ── */
+@keyframes atlas-fade-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0)  scale(1); }
+}
+
+.atlas-enter {
+  animation: atlas-fade-in var(--duration-normal) var(--ease-default) both;
 }

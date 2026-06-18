@@ -1,51 +1,30 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import AppLayout from "@/layouts/AppLayout";
+import LibraryPage from "@/pages/LibraryPage";
+import LauncherPage from "@/pages/LauncherPage";
+import JournalPage from "@/pages/JournalPage";
+import SettingsPage from "@/pages/SettingsPage";
+import GameDetailPage from "@/pages/GameDetailPage";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
-
+export default function App() {
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <BrowserRouter>
+      <Routes>
+        {/* Redirect root to launcher (home screen) */}
+        <Route path="/" element={<Navigate to="/launcher" replace />} />
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+        {/* All main routes inside persistent AppLayout */}
+        <Route element={<AppLayout />}>
+          <Route path="/launcher"        element={<LauncherPage />} />
+          <Route path="/library"         element={<LibraryPage />} />
+          <Route path="/library/:id"     element={<GameDetailPage />} />
+          <Route path="/journal"         element={<JournalPage />} />
+          <Route path="/settings"        element={<SettingsPage />} />
+        </Route>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+        {/* Catch-all fallback */}
+        <Route path="*" element={<Navigate to="/launcher" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
-
-export default App;
