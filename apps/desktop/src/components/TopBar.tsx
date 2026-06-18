@@ -1,17 +1,22 @@
 import { useLocation } from "react-router-dom";
 
 const PAGE_TITLES: Record<string, string> = {
-  "/library":  "Library",
-  "/launcher": "Launcher",
-  "/journal":  "Journal",
-  "/settings": "Settings",
+  "/launcher":     "Launcher",
+  "/library/add":  "Add Game",
+  "/library":      "Library",
+  "/collections":  "Collections",
+  "/journal":      "Journal",
+  "/milestones":   "Milestones",
+  "/identity":     "Identity",
+  "/settings":     "Settings",
+  "/onboarding":   "Welcome",
 };
 
 function getTitle(pathname: string): string {
   for (const [key, label] of Object.entries(PAGE_TITLES)) {
     if (pathname.startsWith(key)) return label;
   }
-  return "Atlas OS";
+  return "Pirate Harbor";
 }
 
 export default function TopBar() {
