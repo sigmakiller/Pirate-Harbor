@@ -97,10 +97,25 @@ export async function getAllSettings(): Promise<Record<string, string>> {
 
 /**
  * Get all play sessions for a game (newest first).
- * Implemented in Task 6 (launcher). Stub kept here for import consistency.
  */
-export async function getSessions(_gameId: string): Promise<Session[]> {
-  // Will call "get_sessions" once Task 6 registers the command.
-  // For now returns an empty array so pages can be wired up safely.
-  return [];
+export async function getSessions(gameId: string): Promise<Session[]> {
+  return invoke<Session[]>("get_sessions", { gameId });
+}
+
+// ── Launcher ──────────────────────────────────────────────────────────────────
+
+/**
+ * Launch a game by its library ID.
+ * Spawns the process and starts background playtime tracking.
+ * Emits a `game-stopped` event when the process exits.
+ */
+export async function launchGame(id: string): Promise<void> {
+  return invoke<void>("launch_game", { id });
+}
+
+/**
+ * Returns the game ID of the currently running game, or null if none.
+ */
+export async function getRunningGame(): Promise<string | null> {
+  return invoke<string | null>("get_running_game");
 }
