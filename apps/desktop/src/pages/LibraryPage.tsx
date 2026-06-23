@@ -1,6 +1,9 @@
 /**
  * LibraryPage — the game archive.
  *
+ * UI state is now managed by useLibraryStore (Zustand) so search/filter/view
+ * preferences persist when navigating away and back.
+ *
  * Features:
  * - Live search (debounced 200ms)
  * - Status + favorites-only filters
@@ -8,7 +11,7 @@
  * - Empty state with CTA
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LayoutGrid,
@@ -19,13 +22,14 @@ import {
   X,
 } from "lucide-react";
 
-import { GameCard }    from "@/components/GameCard";
-import { GameListRow } from "@/components/GameListRow";
-import { getAllGames }  from "@/lib/api";
+import { GameCard }        from "@/components/GameCard";
+import { GameListRow }     from "@/components/GameListRow";
+import { getAllGames }     from "@/lib/api";
+import { useLibraryStore } from "@/stores/useLibraryStore";
 import type { Game, GameStatus } from "@/types";
+import { useState } from "react";
 
-type ViewMode = "grid" | "list";
-type SortKey  = "title" | "playtime" | "last_played" | "added";
+type SortKey = "title" | "playtime" | "last_played" | "added";
 
 const STATUS_OPTIONS: { value: GameStatus; label: string }[] = [
   { value: "playing",   label: "Playing"   },
@@ -42,19 +46,35 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
 
-  // ── UI state ────────────────────────────────────────────────────────────────
-  const [query,          setQuery]         = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [statusFilter,   setStatusFilter]  = useState<GameStatus | null>(null);
-  const [favOnly,        setFavOnly]       = useState(false);
-  const [viewMode,       setViewMode]      = useState<ViewMode>("grid");
-  const [sortKey,        setSortKey]       = useState<SortKey>("title");
+  // ── UI state — from Zustand store (persists across navigation) ───────────────
+  const {
+    searchQuery,
+    statusFilter,
+    favoritesOnly,
+    viewMode,
+    sortKey,
+    setSearchQuery,
+    setStatusFilter,
+    setFavoritesOnly,
+    setViewMode,
+    setSortKey,
+    clearFilters,
+  } = useLibraryStore();
 
-  // Debounce search input (200ms)
+  // Debounced search (200ms) — local ref so we don't need extra state
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
+
+  const handleSearchChange = (q: string) => {
+    setSearchQuery(q);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedQuery(q), 200);
+  };
+
+  // Keep debouncedQuery in sync if the store query changes externally
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 200);
-    return () => clearTimeout(t);
-  }, [query]);
+    setDebouncedQuery(searchQuery);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load library
   const loadGames = useCallback(async () => {
@@ -81,7 +101,6 @@ export default function LibraryPage() {
   const displayed = useMemo(() => {
     let list = [...games];
 
-    // Search
     if (debouncedQuery.trim()) {
       const q = debouncedQuery.toLowerCase();
       list = list.filter(
@@ -92,19 +111,16 @@ export default function LibraryPage() {
       );
     }
 
-    // Status filter
     if (statusFilter) {
       list = list.filter((g) => g.status === statusFilter);
     }
 
-    // Favorites only
-    if (favOnly) {
+    if (favoritesOnly) {
       list = list.filter((g) => g.is_favorite);
     }
 
-    // Sort
     list.sort((a, b) => {
-      switch (sortKey) {
+      switch (sortKey as SortKey) {
         case "title":
           return a.title.localeCompare(b.title);
         case "playtime":
@@ -122,9 +138,9 @@ export default function LibraryPage() {
     });
 
     return list;
-  }, [games, debouncedQuery, statusFilter, favOnly, sortKey]);
+  }, [games, debouncedQuery, statusFilter, favoritesOnly, sortKey]);
 
-  const hasFilters = debouncedQuery || statusFilter || favOnly;
+  const hasFilters = debouncedQuery || statusFilter || favoritesOnly;
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -140,13 +156,11 @@ export default function LibraryPage() {
               : `${games.length} game${games.length !== 1 ? "s" : ""}`}
           </p>
         </div>
-
-        {/* Add game */}
         <button
           id="add-game-btn"
           onClick={() => navigate("/library/add")}
           style={styles.addBtn}
-          aria-label="Add a game"
+          aria-label="Add a game to your library"
         >
           <Plus size={14} />
           Add Game
@@ -157,19 +171,19 @@ export default function LibraryPage() {
       <div style={styles.toolbar}>
         {/* Search */}
         <div style={styles.searchWrapper}>
-          <Search size={14} style={styles.searchIcon} />
+          <Search size={14} style={styles.searchIcon} aria-hidden="true" />
           <input
             id="library-search"
             type="search"
             placeholder="Search games…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
             style={styles.searchInput}
             aria-label="Search library"
           />
-          {query && (
+          {searchQuery && (
             <button
-              onClick={() => setQuery("")}
+              onClick={() => { setSearchQuery(""); setDebouncedQuery(""); }}
               style={styles.clearBtn}
               aria-label="Clear search"
             >
@@ -178,9 +192,12 @@ export default function LibraryPage() {
           )}
         </div>
 
-        {/* Filters */}
-        <div style={styles.filters}>
-          {/* Status chips */}
+        {/* Status filter chips */}
+        <div
+          style={styles.filters}
+          role="group"
+          aria-label="Filter by status"
+        >
           {STATUS_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
@@ -190,36 +207,37 @@ export default function LibraryPage() {
                 ...(statusFilter === value ? styles.chipActive : {}),
               }}
               aria-pressed={statusFilter === value}
+              aria-label={`Filter by ${label}`}
             >
               {label}
             </button>
           ))}
 
-          {/* Favorites */}
           <button
-            onClick={() => setFavOnly(!favOnly)}
+            onClick={() => setFavoritesOnly(!favoritesOnly)}
             style={{
               ...styles.chip,
-              ...(favOnly ? styles.chipActive : {}),
+              ...(favoritesOnly ? styles.chipActive : {}),
               display: "flex",
               alignItems: "center",
               gap: 4,
             }}
-            aria-pressed={favOnly}
+            aria-pressed={favoritesOnly}
+            aria-label="Show favorites only"
           >
-            <Star size={11} fill={favOnly ? "currentColor" : "none"} />
+            <Star size={11} fill={favoritesOnly ? "currentColor" : "none"} aria-hidden="true" />
             Favorites
           </button>
         </div>
 
-        {/* Sort + view */}
+        {/* Sort + view toggle */}
         <div style={styles.controls}>
           <select
             id="library-sort"
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
             style={styles.select}
-            aria-label="Sort by"
+            aria-label="Sort games by"
           >
             <option value="title">Title</option>
             <option value="playtime">Playtime</option>
@@ -227,9 +245,9 @@ export default function LibraryPage() {
             <option value="added">Date added</option>
           </select>
 
-          {/* Grid / List toggle */}
-          <div style={styles.viewToggle}>
+          <div style={styles.viewToggle} role="group" aria-label="View mode">
             <button
+              id="view-grid-btn"
               onClick={() => setViewMode("grid")}
               style={{
                 ...styles.viewBtn,
@@ -238,9 +256,10 @@ export default function LibraryPage() {
               aria-label="Grid view"
               aria-pressed={viewMode === "grid"}
             >
-              <LayoutGrid size={14} />
+              <LayoutGrid size={14} aria-hidden="true" />
             </button>
             <button
+              id="view-list-btn"
               onClick={() => setViewMode("list")}
               style={{
                 ...styles.viewBtn,
@@ -249,7 +268,7 @@ export default function LibraryPage() {
               aria-label="List view"
               aria-pressed={viewMode === "list"}
             >
-              <List size={14} />
+              <List size={14} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -257,12 +276,12 @@ export default function LibraryPage() {
 
       {/* ── Error ────────────────────────────────────────────────────────── */}
       {error && (
-        <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
+        <p style={{ color: "var(--color-text-muted)", fontSize: 13 }} role="alert">
           Failed to load library: {error}
         </p>
       )}
 
-      {/* ── Empty state ───────────────────────────────────────────────────── */}
+      {/* ── Empty state (no games at all) ─────────────────────────────────── */}
       {!loading && !error && games.length === 0 && (
         <div style={styles.emptyState}>
           <span style={styles.emptyMono}>No games yet</span>
@@ -274,7 +293,7 @@ export default function LibraryPage() {
             onClick={() => navigate("/library/add")}
             style={styles.addBtn}
           >
-            <Plus size={14} />
+            <Plus size={14} aria-hidden="true" />
             Add Game
           </button>
         </div>
@@ -286,14 +305,7 @@ export default function LibraryPage() {
           <span style={styles.emptyMono}>No results</span>
           <p style={styles.emptyBody}>No games match your current filters.</p>
           {hasFilters && (
-            <button
-              onClick={() => {
-                setQuery("");
-                setStatusFilter(null);
-                setFavOnly(false);
-              }}
-              style={styles.ghostBtn}
-            >
+            <button onClick={clearFilters} style={styles.ghostBtn}>
               Clear filters
             </button>
           )}
@@ -302,24 +314,26 @@ export default function LibraryPage() {
 
       {/* ── Grid view ────────────────────────────────────────────────────── */}
       {!loading && viewMode === "grid" && displayed.length > 0 && (
-        <div style={styles.grid}>
+        <div style={styles.grid} role="list" aria-label="Game library">
           {displayed.map((game) => (
-            <GameCard key={game.id} game={game} onUpdate={handleGameUpdate} />
+            <div key={game.id} role="listitem">
+              <GameCard game={game} onUpdate={handleGameUpdate} />
+            </div>
           ))}
         </div>
       )}
 
       {/* ── List view ────────────────────────────────────────────────────── */}
       {!loading && viewMode === "list" && displayed.length > 0 && (
-        <table style={styles.table}>
+        <table style={styles.table} aria-label="Game library">
           <thead>
             <tr>
-              <th style={styles.th} />
-              <th style={{ ...styles.th, textAlign: "left" }}>Title</th>
-              <th style={styles.th}>Status</th>
-              <th style={styles.th}>Playtime</th>
-              <th style={styles.th}>Last played</th>
-              <th style={styles.th} />
+              <th style={styles.th} scope="col" />
+              <th style={{ ...styles.th, textAlign: "left" }} scope="col">Title</th>
+              <th style={styles.th} scope="col">Status</th>
+              <th style={styles.th} scope="col">Playtime</th>
+              <th style={styles.th} scope="col">Last played</th>
+              <th style={styles.th} scope="col" />
             </tr>
           </thead>
           <tbody>
@@ -384,36 +398,36 @@ const styles = {
     flexShrink:    0,
   },
   toolbar: {
-    display:        "flex",
-    alignItems:     "center",
-    gap:            12,
-    marginBottom:   32,
-    flexWrap:       "wrap" as const,
-    borderBottom:   "1px solid var(--color-border)",
-    paddingBottom:  20,
+    display:       "flex",
+    alignItems:    "center",
+    gap:           12,
+    marginBottom:  32,
+    flexWrap:      "wrap" as const,
+    borderBottom:  "1px solid var(--color-border)",
+    paddingBottom: 20,
   },
   searchWrapper: {
     position:  "relative" as const,
     flexShrink: 0,
   },
   searchIcon: {
-    position:  "absolute" as const,
-    left:      10,
-    top:       "50%",
-    transform: "translateY(-50%)",
-    color:     "var(--color-text-disabled)",
+    position:      "absolute" as const,
+    left:          10,
+    top:           "50%",
+    transform:     "translateY(-50%)",
+    color:         "var(--color-text-disabled)",
     pointerEvents: "none" as const,
   },
   searchInput: {
-    background:    "var(--color-surface)",
-    border:        "1px solid var(--color-border)",
-    borderRadius:  1,
-    padding:       "8px 32px 8px 32px",
-    fontSize:      13,
-    fontFamily:    "var(--font-body)",
-    color:         "var(--color-text-primary)",
-    width:         200,
-    outline:       "none",
+    background:   "var(--color-surface)",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    padding:      "8px 32px 8px 32px",
+    fontSize:     13,
+    fontFamily:   "var(--font-body)",
+    color:        "var(--color-text-primary)",
+    width:        200,
+    outline:      "none",
   },
   clearBtn: {
     position:   "absolute" as const,
@@ -469,10 +483,10 @@ const styles = {
     outline:       "none",
   },
   viewToggle: {
-    display:     "flex",
-    border:      "1px solid var(--color-border)",
+    display:      "flex",
+    border:       "1px solid var(--color-border)",
     borderRadius: 1,
-    overflow:    "hidden",
+    overflow:     "hidden",
   },
   viewBtn: {
     background: "var(--color-surface)",
@@ -504,13 +518,13 @@ const styles = {
     textTransform: "uppercase" as const,
   },
   emptyBody: {
-    fontFamily:  "var(--font-body)",
-    fontSize:    14,
-    color:       "var(--color-text-muted)",
-    margin:      0,
-    textAlign:   "center" as const,
-    maxWidth:    320,
-    lineHeight:  1.6,
+    fontFamily: "var(--font-body)",
+    fontSize:   14,
+    color:      "var(--color-text-muted)",
+    margin:     0,
+    textAlign:  "center" as const,
+    maxWidth:   320,
+    lineHeight: 1.6,
   },
   ghostBtn: {
     background:    "none",
@@ -525,14 +539,14 @@ const styles = {
     transition:    "border-color 150ms",
   },
   grid: {
-    display:               "grid",
-    gridTemplateColumns:   "repeat(auto-fill, minmax(160px, 1fr))",
-    gap:                   24,
+    display:             "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+    gap:                 24,
   },
   table: {
-    width:           "100%",
-    borderCollapse:  "collapse" as const,
-    tableLayout:     "fixed" as const,
+    width:          "100%",
+    borderCollapse: "collapse" as const,
+    tableLayout:    "fixed" as const,
   },
   th: {
     fontFamily:    "var(--font-mono)",
