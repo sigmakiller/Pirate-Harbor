@@ -9,7 +9,9 @@
 @theme {
   /* ── OS Color Palette (Monochrome only) ── */
   --color-base:        #050505;
+  --color-bg-base:     #050505;
   --color-surface:     #101010;
+  --color-surface-02:  #171717;
   --color-elevated:    #171717;
   --color-border:      rgba(255, 255, 255, 0.08);
   --color-border-sub:  rgba(255, 255, 255, 0.04);
@@ -28,6 +30,7 @@
 
   /* ── Typography ── */
   --font-sans:    "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-body:    "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, monospace;
   --font-display: "Space Grotesk", "Inter", sans-serif;
 
