@@ -66,6 +66,11 @@ pub fn run() {
             commands::collections::add_game_to_collection,
             commands::collections::remove_game_from_collection,
             commands::collections::get_game_collections,
+            // ── Journal ───────────────────────────────────────────────────────────
+            commands::journal::get_journal_entries,
+            commands::journal::create_journal_entry,
+            commands::journal::update_journal_entry,
+            commands::journal::delete_journal_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
