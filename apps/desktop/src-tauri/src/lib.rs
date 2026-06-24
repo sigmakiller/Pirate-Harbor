@@ -57,6 +57,15 @@ pub fn run() {
             // ── Metadata ──────────────────────────────────────────────────────
             commands::metadata::search_game_metadata,
             commands::metadata::get_rawg_api_key,
+            // ── Collections ───────────────────────────────────────────────────
+            commands::collections::get_collections,
+            commands::collections::get_collection,
+            commands::collections::create_collection,
+            commands::collections::update_collection,
+            commands::collections::delete_collection,
+            commands::collections::add_game_to_collection,
+            commands::collections::remove_game_from_collection,
+            commands::collections::get_game_collections,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

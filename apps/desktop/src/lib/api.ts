@@ -190,3 +190,60 @@ export async function searchGameMetadata(query: string): Promise<MetadataResult[
 export async function getRawgApiKey(): Promise<string | null> {
   return invoke<string | null>("get_rawg_api_key");
 }
+
+// ── Collections ───────────────────────────────────────────────────────────────
+
+export interface Collection {
+  id:            string;
+  name:          string;
+  description:   string | null;
+  cover_game_id: string | null;
+  created_at:    string;
+  updated_at:    string;
+  game_ids:      string[];
+  game_count:    number;
+}
+
+export interface NewCollection {
+  name:          string;
+  description?:  string | null;
+  cover_game_id?: string | null;
+}
+
+export interface UpdateCollection {
+  name?:          string;
+  description?:   string | null;
+  cover_game_id?: string | null;
+}
+
+export async function getCollections(): Promise<Collection[]> {
+  return invoke<Collection[]>("get_collections");
+}
+
+export async function getCollection(id: string): Promise<Collection> {
+  return invoke<Collection>("get_collection", { id });
+}
+
+export async function createCollection(payload: NewCollection): Promise<Collection> {
+  return invoke<Collection>("create_collection", { payload });
+}
+
+export async function updateCollection(id: string, payload: UpdateCollection): Promise<Collection> {
+  return invoke<Collection>("update_collection", { id, payload });
+}
+
+export async function deleteCollection(id: string): Promise<void> {
+  return invoke<void>("delete_collection", { id });
+}
+
+export async function addGameToCollection(collectionId: string, gameId: string): Promise<Collection> {
+  return invoke<Collection>("add_game_to_collection", { collectionId, gameId });
+}
+
+export async function removeGameFromCollection(collectionId: string, gameId: string): Promise<Collection> {
+  return invoke<Collection>("remove_game_from_collection", { collectionId, gameId });
+}
+
+export async function getGameCollections(gameId: string): Promise<string[]> {
+  return invoke<string[]>("get_game_collections", { gameId });
+}
