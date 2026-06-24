@@ -142,3 +142,37 @@ pub struct MetadataResult {
     /// Release year (e.g. 2015)
     pub release_year: Option<i32>,
 }
+
+// ── Collections ───────────────────────────────────────────────────────────────
+
+/// A named collection of games — the curator's gallery.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Collection {
+    pub id:            String,
+    pub name:          String,
+    pub description:   Option<String>,
+    /// ID of the game whose cover is used as the collection hero image.
+    pub cover_game_id: Option<String>,
+    pub created_at:    String,
+    pub updated_at:    String,
+    /// IDs of games currently in this collection (populated on query).
+    pub game_ids:      Vec<String>,
+    /// Count of games in this collection.
+    pub game_count:    i64,
+}
+
+/// Payload for creating a new collection.
+#[derive(Debug, Deserialize)]
+pub struct NewCollection {
+    pub name:          String,
+    pub description:   Option<String>,
+    pub cover_game_id: Option<String>,
+}
+
+/// Payload for updating an existing collection.
+#[derive(Debug, Deserialize)]
+pub struct UpdateCollection {
+    pub name:          Option<String>,
+    pub description:   Option<String>,
+    pub cover_game_id: Option<String>,
+}

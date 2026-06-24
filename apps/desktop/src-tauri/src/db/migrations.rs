@@ -6,7 +6,7 @@
 use rusqlite::Connection;
 
 /// All migrations in order. Each is applied sequentially on first run.
-const MIGRATIONS: &[&str] = &[MIGRATION_001, MIGRATION_002];
+const MIGRATIONS: &[&str] = &[MIGRATION_001, MIGRATION_002, MIGRATION_003];
 
 /// 001 — Initial schema: games, sessions, settings + indexes
 const MIGRATION_001: &str = r#"
@@ -55,6 +55,28 @@ CREATE TABLE IF NOT EXISTS metadata_cache (
 );
 "#;
 
+/// 003 — Collections: curated galleries of games
+const MIGRATION_003: &str = r#"
+CREATE TABLE IF NOT EXISTS collections (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    cover_game_id TEXT REFERENCES games(id) ON DELETE SET NULL,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collection_games (
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    game_id       TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    added_at      TEXT NOT NULL,
+    PRIMARY KEY (collection_id, game_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_collection_games_coll ON collection_games(collection_id);
+CREATE INDEX IF NOT EXISTS idx_collection_games_game ON collection_games(game_id);
+"#;
+
 /// Apply all migrations to the given connection.
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     for migration in MIGRATIONS {
@@ -85,6 +107,8 @@ mod tests {
         assert!(tables.contains(&"sessions".to_string()));
         assert!(tables.contains(&"settings".to_string()));
         assert!(tables.contains(&"metadata_cache".to_string()));
+        assert!(tables.contains(&"collections".to_string()));
+        assert!(tables.contains(&"collection_games".to_string()));
     }
 
     #[test]
