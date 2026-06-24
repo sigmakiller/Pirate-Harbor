@@ -6,7 +6,7 @@
 use rusqlite::Connection;
 
 /// All migrations in order. Each is applied sequentially on first run.
-const MIGRATIONS: &[&str] = &[MIGRATION_001];
+const MIGRATIONS: &[&str] = &[MIGRATION_001, MIGRATION_002];
 
 /// 001 — Initial schema: games, sessions, settings + indexes
 const MIGRATION_001: &str = r#"
@@ -46,6 +46,15 @@ CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);
 CREATE INDEX IF NOT EXISTS idx_games_favorite ON games(is_favorite);
 "#;
 
+/// 002 — Metadata cache: stores RAWG search results keyed by lowercase query
+const MIGRATION_002: &str = r#"
+CREATE TABLE IF NOT EXISTS metadata_cache (
+    query       TEXT PRIMARY KEY,
+    results_json TEXT NOT NULL,
+    cached_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
 /// Apply all migrations to the given connection.
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     for migration in MIGRATIONS {
@@ -75,6 +84,7 @@ mod tests {
         assert!(tables.contains(&"games".to_string()));
         assert!(tables.contains(&"sessions".to_string()));
         assert!(tables.contains(&"settings".to_string()));
+        assert!(tables.contains(&"metadata_cache".to_string()));
     }
 
     #[test]

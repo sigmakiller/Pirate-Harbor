@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Monitor, Database, Info, Check, FolderSearch, Plus, X, Search, RefreshCw } from "lucide-react";
+import { Monitor, Database, Info, Check, FolderSearch, Plus, X, Search, RefreshCw, Key } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { useSettingsStore }   from "@/stores/useSettingsStore";
@@ -41,12 +41,19 @@ export default function SettingsPage() {
   const [importing,    setImporting]    = useState<Set<string>>(new Set());
   const [imported,     setImported]     = useState<Set<string>>(new Set());
 
+  // ── RAWG API key state ──────────────────────────────────────────────────────────
+  const [rawgKey,       setRawgKey]       = useState("");
+  const [rawgKeySaved,  setRawgKeySaved]  = useState(false);
+
   // Load settings + scan dirs on mount
   useEffect(() => {
     loadSettings();
     getScanDirectories()
       .then(setScanDirs)
       .catch(() => {/* non-fatal */});
+    // Load RAWG key into local state
+    const savedKey = getSetting("rawg_api_key", "");
+    if (typeof savedKey === "string") setRawgKey(savedKey);
   }, [loadSettings]);
 
   const defaultView = (getSetting("default_view", "grid") as ViewMode) ?? "grid";
@@ -294,6 +301,35 @@ export default function SettingsPage() {
             Add a folder above to start auto-detecting installed games.
           </p>
         )}
+      </Section>
+
+      {/* ── Section: Integrations ───────────────────────────────────── */}
+      <Section icon={<Key size={14} />} title="Integrations">
+        <SettingRow
+          label="RAWG API Key"
+          hint="Used to auto-fill game metadata in Add Game. Free key at rawg.io/apidocs"
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              id="rawg-api-key-input"
+              type="password"
+              value={rawgKey}
+              onChange={(e) => { setRawgKey(e.target.value); setRawgKeySaved(false); }}
+              onBlur={() => {
+                setSetting("rawg_api_key", rawgKey.trim());
+                setRawgKeySaved(true);
+                setTimeout(() => setRawgKeySaved(false), 2000);
+              }}
+              placeholder="Paste your RAWG API key…"
+              autoComplete="off"
+              style={styles.apiKeyInput}
+              aria-label="RAWG API key"
+            />
+            {rawgKeySaved && (
+              <span style={styles.savedBadge} aria-live="polite">Saved</span>
+            )}
+          </div>
+        </SettingRow>
       </Section>
 
       {/* ── Section: Storage ─────────────────────────────────────────────── */}
@@ -709,5 +745,26 @@ const styles = {
     transition:     "color 150ms",
     borderBottom:   "1px solid var(--color-border)",
     paddingBottom:  1,
+  },
+  apiKeyInput: {
+    width:        220,
+    background:   "var(--color-surface)",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    padding:      "7px 12px",
+    fontSize:     12,
+    fontFamily:   "var(--font-mono)",
+    color:        "var(--color-text-primary)",
+    outline:      "none",
+    letterSpacing: "0.04em",
+    boxSizing:    "border-box" as const,
+    transition:   "border-color 150ms",
+  },
+  savedBadge: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      10,
+    letterSpacing: "0.10em",
+    textTransform: "uppercase" as const,
+    color:         "var(--color-text-disabled)",
   },
 } satisfies Record<string, React.CSSProperties>;

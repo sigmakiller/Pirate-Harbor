@@ -1,17 +1,19 @@
 /**
  * AddGamePage — manually add a game to the library.
  *
- * Fields: title (required), exe_path (required), cover image,
- * developer, publisher, genre, status.
+ * T11: Adds optional RAWG metadata search above the form.
+ * When a result is selected it auto-fills title and genre.
+ * All fields remain manually editable — metadata is a convenience, not a lock-in.
  */
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Search, X, Loader } from "lucide-react";
 
-import { FilePickerButton } from "@/components/FilePickerButton";
-import { addGame }          from "@/lib/api";
-import type { GameStatus, NewGame } from "@/types";
+import { FilePickerButton }   from "@/components/FilePickerButton";
+import { addGame, searchGameMetadata } from "@/lib/api";
+import type { MetadataResult }         from "@/lib/api";
+import type { GameStatus, NewGame }    from "@/types";
 
 const STATUS_OPTIONS: { value: GameStatus; label: string }[] = [
   { value: "unplayed",  label: "Unplayed"  },
@@ -23,7 +25,14 @@ const STATUS_OPTIONS: { value: GameStatus; label: string }[] = [
 export default function AddGamePage() {
   const navigate = useNavigate();
 
-  // Form state
+  // ── Metadata search state ─────────────────────────────────────────────────
+  const [metaQuery,    setMetaQuery]    = useState("");
+  const [metaResults,  setMetaResults]  = useState<MetadataResult[]>([]);
+  const [metaSearching, setMetaSearching] = useState(false);
+  const [metaError,    setMetaError]    = useState<string | null>(null);
+  const [metaSelected, setMetaSelected] = useState<string | null>(null); // name of selected result
+
+  // ── Form state ────────────────────────────────────────────────────────────
   const [title,     setTitle]     = useState("");
   const [exePath,   setExePath]   = useState("");
   const [coverPath, setCoverPath] = useState("");
@@ -32,12 +41,40 @@ export default function AddGamePage() {
   const [genre,     setGenre]     = useState("");
   const [status,    setStatus]    = useState<GameStatus>("unplayed");
 
-  // UI state
+  // ── Submit state ──────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);
 
   const canSubmit = title.trim() !== "" && exePath.trim() !== "";
 
+  // ── Metadata search handlers ───────────────────────────────────────────────
+  const handleMetaSearch = async () => {
+    const q = metaQuery.trim();
+    if (!q) return;
+    setMetaSearching(true);
+    setMetaError(null);
+    setMetaResults([]);
+    try {
+      const results = await searchGameMetadata(q);
+      setMetaResults(results);
+      if (results.length === 0) setMetaError("No results found.");
+    } catch (e) {
+      setMetaError(String(e));
+    } finally {
+      setMetaSearching(false);
+    }
+  };
+
+  const handleMetaSelect = (result: MetadataResult) => {
+    setMetaSelected(result.name);
+    setTitle(result.name);
+    if (result.genres) setGenre(result.genres);
+    // Collapse the search panel after selection
+    setMetaResults([]);
+    setMetaQuery("");
+  };
+
+  // ── Form submit ────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit || saving) return;
@@ -46,12 +83,12 @@ export default function AddGamePage() {
     setError(null);
 
     const payload: NewGame = {
-      title:       title.trim(),
-      exe_path:    exePath.trim(),
-      cover_path:  coverPath.trim() || null,
-      developer:   developer.trim() || null,
-      publisher:   publisher.trim() || null,
-      genre:       genre.trim() || null,
+      title:      title.trim(),
+      exe_path:   exePath.trim(),
+      cover_path: coverPath.trim() || null,
+      developer:  developer.trim() || null,
+      publisher:  publisher.trim() || null,
+      genre:      genre.trim() || null,
       status,
     };
 
@@ -80,10 +117,115 @@ export default function AddGamePage() {
       <h1 style={styles.title}>Add Game</h1>
       <p style={styles.subtitle}>Manually add a game to your archive.</p>
 
-      {/* Form */}
+      {/* ── Metadata search ────────────────────────────────────────────────── */}
+      <div style={styles.metaSection} aria-label="Metadata search">
+        <span style={styles.metaLabel}>Search for game info</span>
+        <span style={styles.metaHint}>
+          Auto-fill title and genre from RAWG · requires API key in Settings
+        </span>
+
+        <div style={styles.metaRow}>
+          <div style={styles.metaInputWrapper}>
+            <input
+              id="meta-search-input"
+              type="search"
+              value={metaQuery}
+              onChange={(e) => setMetaQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleMetaSearch()}
+              placeholder="Search game name…"
+              style={styles.metaInput}
+              aria-label="Search for game metadata"
+            />
+            {metaQuery && (
+              <button
+                type="button"
+                onClick={() => { setMetaQuery(""); setMetaResults([]); setMetaError(null); }}
+                style={styles.metaClearBtn}
+                aria-label="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <button
+            id="meta-search-btn"
+            type="button"
+            onClick={handleMetaSearch}
+            disabled={metaSearching || !metaQuery.trim()}
+            style={{
+              ...styles.metaSearchBtn,
+              opacity: metaSearching || !metaQuery.trim() ? 0.4 : 1,
+            }}
+            aria-label="Search for game metadata"
+          >
+            {metaSearching
+              ? <Loader size={13} style={{ animation: "spin 1s linear infinite" }} />
+              : <Search size={13} />
+            }
+            {metaSearching ? "Searching…" : "Search"}
+          </button>
+        </div>
+
+        {/* Selected result badge */}
+        {metaSelected && (
+          <div style={styles.metaSelectedBadge}>
+            <span style={styles.metaSelectedText}>Auto-filled from: {metaSelected}</span>
+            <button
+              type="button"
+              onClick={() => setMetaSelected(null)}
+              style={styles.metaClearBadgeBtn}
+              aria-label="Clear metadata selection"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        )}
+
+        {/* Error */}
+        {metaError && (
+          <p style={styles.metaErrorText} role="alert">{metaError}</p>
+        )}
+
+        {/* Results */}
+        {metaResults.length > 0 && (
+          <div style={styles.metaResults} role="listbox" aria-label="Metadata search results">
+            {metaResults.map((r) => (
+              <button
+                key={r.name}
+                type="button"
+                role="option"
+                aria-selected={metaSelected === r.name}
+                onClick={() => handleMetaSelect(r)}
+                style={styles.metaResultRow}
+              >
+                {/* Thumbnail */}
+                {r.cover_url ? (
+                  <img
+                    src={r.cover_url}
+                    alt=""
+                    style={styles.metaThumb}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div style={styles.metaThumbPlaceholder} />
+                )}
+
+                {/* Info */}
+                <div style={styles.metaResultInfo}>
+                  <span style={styles.metaResultName}>{r.name}</span>
+                  <span style={styles.metaResultSub}>
+                    {[r.genres, r.release_year].filter(Boolean).join(" · ")}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Manual form ────────────────────────────────────────────────────── */}
       <form onSubmit={handleSubmit} style={styles.form} noValidate>
 
-        {/* Title */}
         <Field label="Title" required>
           <input
             id="game-title"
@@ -97,7 +239,6 @@ export default function AddGamePage() {
           />
         </Field>
 
-        {/* Executable */}
         <Field label="Executable" required hint="The .exe file to launch the game">
           <FilePickerButton
             id="game-exe-picker"
@@ -108,20 +249,16 @@ export default function AddGamePage() {
           />
         </Field>
 
-        {/* Cover image */}
         <Field label="Cover Image" hint="Optional — portrait artwork (3:4 ratio works best)">
           <FilePickerButton
             id="game-cover-picker"
             value={coverPath}
             onChange={setCoverPath}
-            filters={[
-              { name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] },
-            ]}
+            filters={[{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }]}
             placeholder="Browse for cover image…"
           />
         </Field>
 
-        {/* Developer */}
         <Field label="Developer">
           <input
             id="game-developer"
@@ -133,7 +270,6 @@ export default function AddGamePage() {
           />
         </Field>
 
-        {/* Publisher */}
         <Field label="Publisher">
           <input
             id="game-publisher"
@@ -145,7 +281,6 @@ export default function AddGamePage() {
           />
         </Field>
 
-        {/* Genre */}
         <Field label="Genre" hint="Comma-separated for multiple">
           <input
             id="game-genre"
@@ -157,7 +292,6 @@ export default function AddGamePage() {
           />
         </Field>
 
-        {/* Status */}
         <Field label="Status">
           <div style={styles.statusGroup} role="group" aria-label="Game status">
             {STATUS_OPTIONS.map(({ value, label }) => (
@@ -177,14 +311,10 @@ export default function AddGamePage() {
           </div>
         </Field>
 
-        {/* Error */}
         {error && (
-          <p style={styles.errorMsg} role="alert">
-            {error}
-          </p>
+          <p style={styles.errorMsg} role="alert">{error}</p>
         )}
 
-        {/* Actions */}
         <div style={styles.actions}>
           <button
             type="button"
@@ -213,14 +343,17 @@ export default function AddGamePage() {
 
 // ── Field wrapper ─────────────────────────────────────────────────────────────
 
-interface FieldProps {
-  label:    string;
+function Field({
+  label,
+  required,
+  hint,
+  children,
+}: {
+  label:     string;
   required?: boolean;
-  hint?:    string;
-  children: React.ReactNode;
-}
-
-function Field({ label, required, hint, children }: FieldProps) {
+  hint?:     string;
+  children:  React.ReactNode;
+}) {
   return (
     <div style={fieldStyles.group}>
       <label style={fieldStyles.label}>
@@ -274,25 +407,194 @@ const styles = {
     fontSize:     14,
     color:        "var(--color-text-muted)",
     margin:       0,
-    marginBottom: 48,
+    marginBottom: 40,
   },
+
+  // ── Metadata search panel ─────────────────────────────────────────────────
+  metaSection: {
+    display:      "flex",
+    flexDirection: "column" as const,
+    gap:          8,
+    marginBottom: 40,
+    padding:      "20px",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    background:   "var(--color-surface)",
+  },
+  metaLabel: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      11,
+    letterSpacing: "0.10em",
+    textTransform: "uppercase" as const,
+    color:         "var(--color-text-muted)",
+    fontWeight:    500,
+  },
+  metaHint: {
+    fontFamily:   "var(--font-body)",
+    fontSize:     12,
+    color:        "var(--color-text-disabled)",
+    marginBottom: 8,
+  },
+  metaRow: {
+    display: "flex",
+    gap:     8,
+  },
+  metaInputWrapper: {
+    position: "relative" as const,
+    flex:     1,
+  },
+  metaInput: {
+    width:        "100%",
+    background:   "var(--color-elevated)",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    padding:      "8px 32px 8px 12px",
+    fontSize:     13,
+    fontFamily:   "var(--font-body)",
+    color:        "var(--color-text-primary)",
+    outline:      "none",
+    boxSizing:    "border-box" as const,
+  },
+  metaClearBtn: {
+    position:   "absolute" as const,
+    right:      8,
+    top:        "50%",
+    transform:  "translateY(-50%)",
+    background: "none",
+    border:     "none",
+    color:      "var(--color-text-disabled)",
+    cursor:     "pointer",
+    padding:    2,
+    display:    "flex",
+  },
+  metaSearchBtn: {
+    display:       "flex",
+    alignItems:    "center",
+    gap:           6,
+    background:    "none",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    padding:       "8px 16px",
+    fontSize:      12,
+    fontFamily:    "var(--font-mono)",
+    letterSpacing: "0.06em",
+    color:         "var(--color-text-muted)",
+    cursor:        "pointer",
+    flexShrink:    0,
+    transition:    "border-color 150ms",
+  },
+  metaSelectedBadge: {
+    display:      "flex",
+    alignItems:   "center",
+    gap:          8,
+    padding:      "6px 12px",
+    background:   "var(--color-elevated)",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    alignSelf:    "flex-start" as const,
+  },
+  metaSelectedText: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      11,
+    color:         "var(--color-text-muted)",
+    letterSpacing: "0.04em",
+  },
+  metaClearBadgeBtn: {
+    background: "none",
+    border:     "none",
+    color:      "var(--color-text-disabled)",
+    cursor:     "pointer",
+    padding:    0,
+    display:    "flex",
+  },
+  metaErrorText: {
+    fontFamily:  "var(--font-body)",
+    fontSize:    12,
+    color:       "var(--color-text-muted)",
+    margin:      0,
+    lineHeight:  1.5,
+  },
+  metaResults: {
+    display:       "flex",
+    flexDirection: "column" as const,
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    overflow:      "hidden",
+    marginTop:     4,
+  },
+  metaResultRow: {
+    display:    "flex",
+    alignItems: "center",
+    gap:        12,
+    padding:    "10px 12px",
+    background: "none",
+    border:     "none",
+    borderBottom: "1px solid var(--color-border-sub)",
+    cursor:     "pointer",
+    width:      "100%",
+    textAlign:  "left" as const,
+    transition: "background 150ms",
+  },
+  metaThumb: {
+    width:        40,
+    height:       54, // 3:4 ratio
+    objectFit:    "cover" as const,
+    borderRadius: 1,
+    flexShrink:   0,
+    display:      "block",
+    background:   "var(--color-elevated)",
+  },
+  metaThumbPlaceholder: {
+    width:        40,
+    height:       54,
+    borderRadius: 1,
+    background:   "var(--color-elevated)",
+    flexShrink:   0,
+  },
+  metaResultInfo: {
+    display:       "flex",
+    flexDirection: "column" as const,
+    gap:           3,
+    flex:          1,
+    minWidth:      0,
+  },
+  metaResultName: {
+    fontFamily:   "var(--font-body)",
+    fontSize:     13,
+    fontWeight:   500,
+    color:        "var(--color-text-primary)",
+    overflow:     "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace:   "nowrap" as const,
+  },
+  metaResultSub: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      11,
+    color:         "var(--color-text-disabled)",
+    letterSpacing: "0.04em",
+    overflow:      "hidden",
+    textOverflow:  "ellipsis",
+    whiteSpace:    "nowrap" as const,
+  },
+
+  // ── Form ──────────────────────────────────────────────────────────────────
   form: {
     display:       "flex",
     flexDirection: "column" as const,
     gap:           28,
   },
   input: {
-    width:       "100%",
-    background:  "var(--color-surface)",
-    border:      "1px solid var(--color-border)",
+    width:        "100%",
+    background:   "var(--color-surface)",
+    border:       "1px solid var(--color-border)",
     borderRadius: 1,
-    padding:     "9px 12px",
-    fontSize:    13,
-    fontFamily:  "var(--font-body)",
-    color:       "var(--color-text-primary)",
-    outline:     "none",
-    boxSizing:   "border-box" as const,
-    transition:  "border-color 150ms",
+    padding:      "9px 12px",
+    fontSize:     13,
+    fontFamily:   "var(--font-body)",
+    color:        "var(--color-text-primary)",
+    outline:      "none",
+    boxSizing:    "border-box" as const,
+    transition:   "border-color 150ms",
   },
   statusGroup: {
     display: "flex",
@@ -316,12 +618,12 @@ const styles = {
     color:       "var(--color-text-primary)",
   },
   errorMsg: {
-    fontFamily: "var(--font-body)",
-    fontSize:   13,
-    color:      "var(--color-text-muted)",
-    margin:     0,
-    padding:    "10px 14px",
-    border:     "1px solid var(--color-border)",
+    fontFamily:   "var(--font-body)",
+    fontSize:     13,
+    color:        "var(--color-text-muted)",
+    margin:       0,
+    padding:      "10px 14px",
+    border:       "1px solid var(--color-border)",
     borderRadius: 1,
   },
   actions: {
