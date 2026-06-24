@@ -114,3 +114,16 @@ pub struct Session {
     pub ended_at:      Option<String>,
     pub duration_secs: i64,
 }
+
+// ── Scanner ───────────────────────────────────────────────────────────────────
+
+/// A candidate game executable discovered during a folder scan.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanResult {
+    /// Display name — derived from the exe filename (no extension)
+    pub name:          String,
+    /// Absolute path to the executable
+    pub exe_path:      String,
+    /// True if this exe_path is already registered in the library
+    pub already_added: bool,
+}

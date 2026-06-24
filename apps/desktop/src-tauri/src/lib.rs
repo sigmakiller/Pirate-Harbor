@@ -48,6 +48,12 @@ pub fn run() {
             commands::launcher::get_running_game,
             // ── Sessions ──────────────────────────────────────────────────────
             commands::sessions::get_sessions,
+            // ── Scanner ───────────────────────────────────────────────────────
+            commands::scanner::get_scan_directories,
+            commands::scanner::add_scan_directory,
+            commands::scanner::remove_scan_directory,
+            commands::scanner::scan_directory,
+            commands::scanner::scan_all_directories,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

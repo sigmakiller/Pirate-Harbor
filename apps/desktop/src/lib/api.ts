@@ -119,3 +119,45 @@ export async function launchGame(id: string): Promise<void> {
 export async function getRunningGame(): Promise<string | null> {
   return invoke<string | null>("get_running_game");
 }
+
+// ── Scanner ───────────────────────────────────────────────────────────────────
+
+export interface ScanResult {
+  name:         string;
+  exe_path:     string;
+  already_added: boolean;
+}
+
+/** Return all registered scan directories. */
+export async function getScanDirectories(): Promise<string[]> {
+  return invoke<string[]>("get_scan_directories");
+}
+
+/**
+ * Add a directory to the watch list. Returns the full updated list.
+ * Throws if the path is not a valid directory.
+ */
+export async function addScanDirectory(path: string): Promise<string[]> {
+  return invoke<string[]>("add_scan_directory", { path });
+}
+
+/** Remove a directory from the watch list. Returns the updated list. */
+export async function removeScanDirectory(path: string): Promise<string[]> {
+  return invoke<string[]>("remove_scan_directory", { path });
+}
+
+/**
+ * Scan a single directory and return discovered executables.
+ * Already-added games are marked with `already_added: true`.
+ */
+export async function scanDirectory(path: string): Promise<ScanResult[]> {
+  return invoke<ScanResult[]>("scan_directory", { path });
+}
+
+/**
+ * Scan ALL registered directories and return a merged, deduplicated result set.
+ * Returns an empty array if no directories are registered.
+ */
+export async function scanAllDirectories(): Promise<ScanResult[]> {
+  return invoke<ScanResult[]>("scan_all_directories");
+}

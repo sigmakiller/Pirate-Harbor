@@ -5,16 +5,27 @@
  * "Industrial, uncluttered layout."
  *
  * Sections:
- *   1. Appearance — default library view mode
- *   2. Storage    — database location info
- *   3. About      — version, commit, links
+ *   1. Appearance        — default library view mode
+ *   2. Scan Directories  — T10: watched folder management + scan results
+ *   3. Storage           — database location info
+ *   4. About             — version, commit, links
  */
 
-import { useEffect } from "react";
-import { Monitor, Database, Info, Check } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Monitor, Database, Info, Check, FolderSearch, Plus, X, Search, RefreshCw } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
 
-import { useSettingsStore } from "@/stores/useSettingsStore";
-import type { ViewMode } from "@/stores/useLibraryStore";
+import { useSettingsStore }   from "@/stores/useSettingsStore";
+import { addGame }             from "@/lib/api";
+import {
+  getScanDirectories,
+  addScanDirectory,
+  removeScanDirectory,
+  scanAllDirectories,
+  type ScanResult,
+} from "@/lib/api";
+import type { ViewMode }      from "@/stores/useLibraryStore";
+import type { NewGame }       from "@/types";
 
 const APP_VERSION = "0.1.0";
 
@@ -22,11 +33,88 @@ export default function SettingsPage() {
   const { settings, loading, loadSettings, setSetting, getSetting } =
     useSettingsStore();
 
+  // ── Scan directories state ─────────────────────────────────────────────────
+  const [scanDirs,     setScanDirs]     = useState<string[]>([]);
+  const [scanResults,  setScanResults]  = useState<ScanResult[]>([]);
+  const [scanning,     setScanning]     = useState(false);
+  const [scanError,    setScanError]    = useState<string | null>(null);
+  const [importing,    setImporting]    = useState<Set<string>>(new Set());
+  const [imported,     setImported]     = useState<Set<string>>(new Set());
+
+  // Load settings + scan dirs on mount
   useEffect(() => {
     loadSettings();
+    getScanDirectories()
+      .then(setScanDirs)
+      .catch(() => {/* non-fatal */});
   }, [loadSettings]);
 
   const defaultView = (getSetting("default_view", "grid") as ViewMode) ?? "grid";
+
+  // ── Scan directory handlers ────────────────────────────────────────────────
+  const handleAddDirectory = async () => {
+    const selected = await open({ multiple: false, directory: true });
+    if (!selected || typeof selected !== "string") return;
+    try {
+      const updated = await addScanDirectory(selected);
+      setScanDirs(updated);
+      setScanResults([]);  // clear stale results
+    } catch (e) {
+      setScanError(String(e));
+    }
+  };
+
+  const handleRemoveDirectory = async (path: string) => {
+    const updated = await removeScanDirectory(path);
+    setScanDirs(updated);
+    setScanResults([]);
+  };
+
+  const handleScanAll = useCallback(async () => {
+    setScanning(true);
+    setScanError(null);
+    setScanResults([]);
+    try {
+      const results = await scanAllDirectories();
+      setScanResults(results);
+    } catch (e) {
+      setScanError(String(e));
+    } finally {
+      setScanning(false);
+    }
+  }, []);
+
+  const handleImport = async (result: ScanResult) => {
+    if (importing.has(result.exe_path) || imported.has(result.exe_path)) return;
+    setImporting((prev) => new Set([...prev, result.exe_path]));
+    try {
+      const payload: NewGame = {
+        title:      result.name,
+        exe_path:   result.exe_path,
+        cover_path: null,
+        developer:  null,
+        publisher:  null,
+        genre:      null,
+        status:     "unplayed",
+      };
+      await addGame(payload);
+      setImported((prev) => new Set([...prev, result.exe_path]));
+      // Refresh scan results to mark game as already_added
+      setScanResults((prev) =>
+        prev.map((r) =>
+          r.exe_path === result.exe_path ? { ...r, already_added: true } : r
+        )
+      );
+    } catch {
+      // non-fatal — user can retry
+    } finally {
+      setImporting((prev) => {
+        const next = new Set(prev);
+        next.delete(result.exe_path);
+        return next;
+      });
+    }
+  };
 
   if (loading && Object.keys(settings).length === 0) {
     return (
@@ -38,9 +126,12 @@ export default function SettingsPage() {
     );
   }
 
+  // Separate results into new vs already-added
+  const newResults   = scanResults.filter((r) => !r.already_added);
+  const knownResults = scanResults.filter((r) => r.already_added);
+
   return (
     <div className="atlas-enter" style={styles.page}>
-      {/* ── Page Header ──────────────────────────────────────────────────── */}
       <h1 style={styles.pageTitle}>Settings</h1>
       <p style={styles.pageSubtitle}>System configuration.</p>
 
@@ -50,11 +141,7 @@ export default function SettingsPage() {
           label="Default library view"
           hint="Grid or list when opening the Library"
         >
-          <div
-            style={styles.toggleGroup}
-            role="group"
-            aria-label="Default library view"
-          >
+          <div style={styles.toggleGroup} role="group" aria-label="Default library view">
             <ToggleBtn
               id="view-grid-btn"
               active={defaultView === "grid"}
@@ -75,6 +162,140 @@ export default function SettingsPage() {
         </SettingRow>
       </Section>
 
+      {/* ── Section: Scan Directories ─────────────────────────────────────── */}
+      <Section icon={<FolderSearch size={14} />} title="Scan Directories">
+        <SettingRow
+          label="Watched folders"
+          hint="Pirate Harbor scans these folders for .exe files you can import"
+        >
+          <button
+            id="add-scan-dir-btn"
+            type="button"
+            onClick={handleAddDirectory}
+            style={styles.outlineBtn}
+            aria-label="Add a folder to watch"
+          >
+            <Plus size={12} aria-hidden="true" />
+            Add Folder
+          </button>
+        </SettingRow>
+
+        {/* Directory list */}
+        {scanDirs.length > 0 && (
+          <div style={styles.dirList} role="list" aria-label="Watched folders">
+            {scanDirs.map((dir) => (
+              <div key={dir} style={styles.dirRow} role="listitem">
+                <code style={styles.dirPath} title={dir}>{dir}</code>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveDirectory(dir)}
+                  style={styles.removeBtn}
+                  aria-label={`Remove ${dir} from watched folders`}
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Scan button */}
+        {scanDirs.length > 0 && (
+          <div style={{ paddingTop: 12 }}>
+            <button
+              id="scan-now-btn"
+              type="button"
+              onClick={handleScanAll}
+              disabled={scanning}
+              style={{
+                ...styles.outlineBtn,
+                opacity: scanning ? 0.5 : 1,
+                display: "flex",
+                gap: 6,
+              }}
+              aria-label="Scan all watched folders for games"
+            >
+              {scanning
+                ? <RefreshCw size={12} style={{ animation: "spin 1s linear infinite" }} aria-hidden="true" />
+                : <Search size={12} aria-hidden="true" />
+              }
+              {scanning ? "Scanning…" : "Scan Now"}
+            </button>
+          </div>
+        )}
+
+        {scanError && (
+          <p style={styles.scanError} role="alert">{scanError}</p>
+        )}
+
+        {/* Scan results */}
+        {scanResults.length > 0 && (
+          <div style={styles.resultsPanel} role="region" aria-label="Scan results">
+            <p style={styles.resultsHeader}>
+              {newResults.length} new · {knownResults.length} already in library
+            </p>
+
+            {newResults.length > 0 && (
+              <div style={styles.resultsList} role="list">
+                {newResults.map((result) => {
+                  const isImporting = importing.has(result.exe_path);
+                  const isDone      = imported.has(result.exe_path) || result.already_added;
+                  return (
+                    <div key={result.exe_path} style={styles.resultRow} role="listitem">
+                      <div style={styles.resultMeta}>
+                        <span style={styles.resultName}>{result.name}</span>
+                        <code style={styles.resultPath} title={result.exe_path}>
+                          {result.exe_path}
+                        </code>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleImport(result)}
+                        disabled={isImporting || isDone}
+                        style={{
+                          ...styles.importBtn,
+                          opacity: isImporting || isDone ? 0.4 : 1,
+                          cursor:  isImporting || isDone ? "default" : "pointer",
+                        }}
+                        aria-label={`Add ${result.name} to library`}
+                      >
+                        {isDone ? "Added" : isImporting ? "Adding…" : "Add"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {knownResults.length > 0 && (
+              <details style={styles.knownDetails}>
+                <summary style={styles.knownSummary}>
+                  {knownResults.length} already in library
+                </summary>
+                <div style={styles.resultsList} role="list">
+                  {knownResults.map((result) => (
+                    <div key={result.exe_path} style={{ ...styles.resultRow, opacity: 0.4 }} role="listitem">
+                      <div style={styles.resultMeta}>
+                        <span style={styles.resultName}>{result.name}</span>
+                        <code style={styles.resultPath}>{result.exe_path}</code>
+                      </div>
+                      <span style={styles.alreadyTag}>In library</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
+        {/* No dirs empty state */}
+        {scanDirs.length === 0 && (
+          <p style={styles.emptyHint}>
+            Add a folder above to start auto-detecting installed games.
+          </p>
+        )}
+      </Section>
+
       {/* ── Section: Storage ─────────────────────────────────────────────── */}
       <Section icon={<Database size={14} />} title="Storage">
         <SettingRow
@@ -85,7 +306,6 @@ export default function SettingsPage() {
             %APPDATA%\com.pirateharbor.app\pirate_harbor.db
           </code>
         </SettingRow>
-
         <SettingRow
           label="Cover images"
           hint="Cover art is stored as file paths — no copying occurs"
@@ -99,15 +319,12 @@ export default function SettingsPage() {
         <SettingRow label="Version">
           <span style={styles.valueMono}>v{APP_VERSION}</span>
         </SettingRow>
-
         <SettingRow label="Design system">
           <span style={styles.valueMono}>Atlas OS — monochrome</span>
         </SettingRow>
-
         <SettingRow label="Stack">
           <span style={styles.valueMono}>Tauri v2 · React 19 · SQLite</span>
         </SettingRow>
-
         <SettingRow label="Source">
           <a
             href="https://github.com/sigmakiller/Pirate-Harbor"
@@ -136,11 +353,11 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section style={styles.section} aria-labelledby={`section-${title.toLowerCase()}`}>
+    <section style={styles.section} aria-labelledby={`section-${title.toLowerCase().replace(/ /g, "-")}`}>
       <div style={styles.sectionHeader}>
         <span style={styles.sectionIcon} aria-hidden="true">{icon}</span>
         <h2
-          id={`section-${title.toLowerCase()}`}
+          id={`section-${title.toLowerCase().replace(/ /g, "-")}`}
           style={styles.sectionTitle}
         >
           {title}
@@ -178,10 +395,10 @@ function ToggleBtn({
   children,
   "aria-label": ariaLabel,
 }: {
-  id:          string;
-  active:      boolean;
-  onClick:     () => void;
-  children:    React.ReactNode;
+  id:           string;
+  active:       boolean;
+  onClick:      () => void;
+  children:     React.ReactNode;
   "aria-label": string;
 }) {
   return (
@@ -196,13 +413,7 @@ function ToggleBtn({
         ...(active ? styles.toggleBtnActive : {}),
       }}
     >
-      {active && (
-        <Check
-          size={11}
-          aria-hidden="true"
-          style={{ flexShrink: 0 }}
-        />
-      )}
+      {active && <Check size={11} aria-hidden="true" style={{ flexShrink: 0 }} />}
       {children}
     </button>
   );
@@ -285,11 +496,11 @@ const styles = {
     fontWeight: 500,
   },
   hintText: {
-    fontFamily:  "var(--font-body)",
-    fontSize:    12,
-    color:       "var(--color-text-disabled)",
-    lineHeight:  1.5,
-    maxWidth:    360,
+    fontFamily: "var(--font-body)",
+    fontSize:   12,
+    color:      "var(--color-text-disabled)",
+    lineHeight: 1.5,
+    maxWidth:   360,
   },
   settingControl: {
     flexShrink: 0,
@@ -320,19 +531,168 @@ const styles = {
     borderColor: "var(--color-text-secondary)",
     color:       "var(--color-text-primary)",
   },
-  pathCode: {
-    fontFamily:  "var(--font-mono)",
+  outlineBtn: {
+    display:       "flex",
+    alignItems:    "center",
+    gap:           6,
+    background:    "none",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    padding:       "7px 14px",
+    fontSize:      11,
+    fontFamily:    "var(--font-mono)",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+    color:         "var(--color-text-muted)",
+    cursor:        "pointer",
+    transition:    "border-color 150ms, color 150ms",
+  },
+  dirList: {
+    display:       "flex",
+    flexDirection: "column" as const,
+    gap:           4,
+    marginTop:     8,
+  },
+  dirRow: {
+    display:        "flex",
+    alignItems:     "center",
+    justifyContent: "space-between",
+    padding:        "8px 12px",
+    background:     "var(--color-surface)",
+    border:         "1px solid var(--color-border)",
+    borderRadius:   1,
+    gap:            8,
+  },
+  dirPath: {
+    fontFamily:   "var(--font-mono)",
+    fontSize:     11,
+    color:        "var(--color-text-muted)",
+    flex:         1,
+    minWidth:     0,
+    overflow:     "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace:   "nowrap" as const,
+  },
+  removeBtn: {
+    background:  "none",
+    border:      "none",
+    color:       "var(--color-text-disabled)",
+    cursor:      "pointer",
+    padding:     4,
+    display:     "flex",
+    flexShrink:  0,
+    transition:  "color 150ms",
+  },
+  scanError: {
+    fontFamily:  "var(--font-body)",
     fontSize:    12,
     color:       "var(--color-text-muted)",
-    background:  "var(--color-surface)",
-    border:      "1px solid var(--color-border)",
-    padding:     "4px 10px",
+    margin:      "8px 0 0",
+  },
+  emptyHint: {
+    fontFamily:  "var(--font-body)",
+    fontSize:    13,
+    color:       "var(--color-text-disabled)",
+    margin:      "12px 0 0",
+    paddingTop:  12,
+  },
+  resultsPanel: {
+    marginTop:    16,
+    border:       "1px solid var(--color-border)",
     borderRadius: 1,
-    maxWidth:    260,
-    overflow:    "hidden",
+    overflow:     "hidden",
+  },
+  resultsHeader: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      11,
+    letterSpacing: "0.08em",
+    color:         "var(--color-text-disabled)",
+    margin:        0,
+    padding:       "10px 14px",
+    borderBottom:  "1px solid var(--color-border)",
+    background:    "var(--color-surface)",
+  },
+  resultsList: {
+    display:       "flex",
+    flexDirection: "column" as const,
+  },
+  resultRow: {
+    display:        "flex",
+    alignItems:     "center",
+    justifyContent: "space-between",
+    padding:        "10px 14px",
+    borderBottom:   "1px solid var(--color-border-sub)",
+    gap:            16,
+  },
+  resultMeta: {
+    display:       "flex",
+    flexDirection: "column" as const,
+    gap:           2,
+    flex:          1,
+    minWidth:      0,
+  },
+  resultName: {
+    fontFamily:   "var(--font-body)",
+    fontSize:     13,
+    fontWeight:   500,
+    color:        "var(--color-text-primary)",
+    overflow:     "hidden",
     textOverflow: "ellipsis",
-    whiteSpace:  "nowrap" as const,
-    display:     "block",
+    whiteSpace:   "nowrap" as const,
+  },
+  resultPath: {
+    fontFamily:   "var(--font-mono)",
+    fontSize:     10,
+    color:        "var(--color-text-disabled)",
+    overflow:     "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace:   "nowrap" as const,
+  },
+  importBtn: {
+    flexShrink:    0,
+    background:    "var(--color-elevated)",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    padding:       "5px 14px",
+    fontSize:      11,
+    fontFamily:    "var(--font-mono)",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+    color:         "var(--color-text-muted)",
+    transition:    "border-color 150ms",
+  },
+  alreadyTag: {
+    flexShrink:    0,
+    fontFamily:    "var(--font-mono)",
+    fontSize:      10,
+    color:         "var(--color-text-disabled)",
+    letterSpacing: "0.08em",
+  },
+  knownDetails: {
+    borderTop: "1px solid var(--color-border-sub)",
+  },
+  knownSummary: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      11,
+    letterSpacing: "0.06em",
+    color:         "var(--color-text-disabled)",
+    cursor:        "pointer",
+    padding:       "10px 14px",
+    listStyle:     "none",
+  },
+  pathCode: {
+    fontFamily:   "var(--font-mono)",
+    fontSize:     12,
+    color:        "var(--color-text-muted)",
+    background:   "var(--color-surface)",
+    border:       "1px solid var(--color-border)",
+    padding:      "4px 10px",
+    borderRadius: 1,
+    maxWidth:     260,
+    overflow:     "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace:   "nowrap" as const,
+    display:      "block",
   },
   valueMono: {
     fontFamily:    "var(--font-mono)",
@@ -341,13 +701,13 @@ const styles = {
     letterSpacing: "0.04em",
   },
   link: {
-    fontFamily:    "var(--font-mono)",
-    fontSize:      12,
-    color:         "var(--color-text-muted)",
+    fontFamily:     "var(--font-mono)",
+    fontSize:       12,
+    color:          "var(--color-text-muted)",
     textDecoration: "none",
-    letterSpacing: "0.02em",
-    transition:    "color 150ms",
-    borderBottom:  "1px solid var(--color-border)",
-    paddingBottom: 1,
+    letterSpacing:  "0.02em",
+    transition:     "color 150ms",
+    borderBottom:   "1px solid var(--color-border)",
+    paddingBottom:  1,
   },
 } satisfies Record<string, React.CSSProperties>;
