@@ -127,3 +127,18 @@ pub struct ScanResult {
     /// True if this exe_path is already registered in the library
     pub already_added: bool,
 }
+
+// ── Metadata ──────────────────────────────────────────────────────────────────
+
+/// A game metadata result returned from the RAWG API search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataResult {
+    /// Canonical game title
+    pub name:         String,
+    /// Comma-separated genre names
+    pub genres:       String,
+    /// Cover artwork URL (hosted on RAWG CDN)
+    pub cover_url:    Option<String>,
+    /// Release year (e.g. 2015)
+    pub release_year: Option<i32>,
+}

@@ -161,3 +161,32 @@ export async function scanDirectory(path: string): Promise<ScanResult[]> {
 export async function scanAllDirectories(): Promise<ScanResult[]> {
   return invoke<ScanResult[]>("scan_all_directories");
 }
+
+// ── Metadata ──────────────────────────────────────────────────────────────────
+
+export interface MetadataResult {
+  name:         string;
+  genres:       string;
+  cover_url:    string | null;
+  release_year: number | null;
+}
+
+/**
+ * Search the RAWG Video Games Database for game metadata.
+ *
+ * Results are cached locally for 24 hours.
+ * Requires the RAWG API key to be configured in Settings → Integrations.
+ *
+ * @throws if no API key is configured or the network call fails.
+ */
+export async function searchGameMetadata(query: string): Promise<MetadataResult[]> {
+  return invoke<MetadataResult[]>("search_game_metadata", { query });
+}
+
+/**
+ * Return the configured RAWG API key, or null if not set.
+ * Used by Settings page to pre-populate the key input.
+ */
+export async function getRawgApiKey(): Promise<string | null> {
+  return invoke<string | null>("get_rawg_api_key");
+}
