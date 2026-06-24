@@ -739,6 +739,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]
