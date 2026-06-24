@@ -247,3 +247,56 @@ export async function removeGameFromCollection(collectionId: string, gameId: str
 export async function getGameCollections(gameId: string): Promise<string[]> {
   return invoke<string[]>("get_game_collections", { gameId });
 }
+
+// ── Journal ───────────────────────────────────────────────────────────────────
+
+export type EntryType = "note" | "milestone" | "session";
+
+export interface JournalEntry {
+  id:         string;
+  game_id:    string | null;
+  game_title: string | null;
+  title:      string | null;
+  body:       string;
+  entry_type: EntryType;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewJournalEntry {
+  game_id?:    string | null;
+  title?:      string | null;
+  body:        string;
+  entry_type?: EntryType;
+}
+
+export interface UpdateJournalEntry {
+  title?:      string | null;
+  body?:       string;
+  entry_type?: EntryType;
+}
+
+export async function getJournalEntries(
+  gameId?: string | null,
+  limit?: number
+): Promise<JournalEntry[]> {
+  return invoke<JournalEntry[]>("get_journal_entries", {
+    gameId: gameId ?? null,
+    limit:  limit  ?? null,
+  });
+}
+
+export async function createJournalEntry(payload: NewJournalEntry): Promise<JournalEntry> {
+  return invoke<JournalEntry>("create_journal_entry", { payload });
+}
+
+export async function updateJournalEntry(
+  id: string,
+  payload: UpdateJournalEntry
+): Promise<JournalEntry> {
+  return invoke<JournalEntry>("update_journal_entry", { id, payload });
+}
+
+export async function deleteJournalEntry(id: string): Promise<void> {
+  return invoke<void>("delete_journal_entry", { id });
+}

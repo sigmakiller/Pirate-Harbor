@@ -176,3 +176,72 @@ pub struct UpdateCollection {
     pub description:   Option<String>,
     pub cover_game_id: Option<String>,
 }
+
+// ── Journal ───────────────────────────────────────────────────────────────────
+
+/// Type of a journal entry — controls visual treatment in the UI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EntryType {
+    Note,
+    Milestone,
+    Session,
+}
+
+impl EntryType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EntryType::Note      => "note",
+            EntryType::Milestone => "milestone",
+            EntryType::Session   => "session",
+        }
+    }
+}
+
+impl Default for EntryType {
+    fn default() -> Self { EntryType::Note }
+}
+
+impl std::str::FromStr for EntryType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "note"      => Ok(EntryType::Note),
+            "milestone" => Ok(EntryType::Milestone),
+            "session"   => Ok(EntryType::Session),
+            other       => Err(format!("Unknown entry type: {}", other)),
+        }
+    }
+}
+
+/// A single journal entry — note, milestone, or session log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JournalEntry {
+    pub id:         String,
+    /// Linked game (optional — entries can be game-agnostic)
+    pub game_id:    Option<String>,
+    /// Denormalised game title for display without an extra join
+    pub game_title: Option<String>,
+    pub title:      Option<String>,
+    pub body:       String,
+    pub entry_type: EntryType,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Payload for creating a journal entry.
+#[derive(Debug, Deserialize)]
+pub struct NewJournalEntry {
+    pub game_id:    Option<String>,
+    pub title:      Option<String>,
+    pub body:       String,
+    pub entry_type: Option<EntryType>,
+}
+
+/// Payload for updating a journal entry.
+#[derive(Debug, Deserialize)]
+pub struct UpdateJournalEntry {
+    pub title:      Option<String>,
+    pub body:       Option<String>,
+    pub entry_type: Option<EntryType>,
+}
