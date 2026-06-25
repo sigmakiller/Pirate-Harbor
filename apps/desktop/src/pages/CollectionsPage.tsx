@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate }                        from "react-router-dom";
 import { Plus, X, Trash2, FolderOpen } from "lucide-react";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 import {
   getCollections,
@@ -44,6 +45,9 @@ export default function CollectionsPage() {
   const [newDesc,   setNewDesc]   = useState("");
   const [saving,    setSaving]    = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
+
+  // Delete confirmation
+  const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,9 +93,14 @@ export default function CollectionsPage() {
   };
 
   const handleDelete = async (col: Collection) => {
-    if (!window.confirm(`Delete "${col.name}"? The games inside will not be removed.`)) return;
-    await deleteCollection(col.id);
-    if (selected?.id === col.id) setSelected(null);
+    setPendingDelete(col);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    await deleteCollection(pendingDelete.id);
+    if (selected?.id === pendingDelete.id) setSelected(null);
+    setPendingDelete(null);
     await refresh();
   };
 
@@ -356,6 +365,17 @@ export default function CollectionsPage() {
           )}
         </aside>
       )}
+
+      {/* Confirm delete dialog */}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete collection"
+        message={`Delete "${pendingDelete?.name}"? Games inside will not be removed.`}
+        confirmLabel="Delete"
+        dangerous
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

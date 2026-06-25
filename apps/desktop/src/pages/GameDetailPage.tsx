@@ -9,11 +9,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Star, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Play, Star, Pencil, Trash2, FolderPlus, Check } from "lucide-react";
 
 import { AmbientLayer }    from "@/components/AmbientLayer";
 import ConfirmDialog        from "@/components/ConfirmDialog";
-import { getGame, getSessions, launchGame, toggleFavorite, deleteGame } from "@/lib/api";
+import { getGame, getSessions, launchGame, toggleFavorite, deleteGame,
+         getCollections, addGameToCollection, removeGameFromCollection,
+         type Collection } from "@/lib/api";
 import { formatPlaytime, formatRelativeDate }   from "@/lib/utils";
 import { useToastStore }    from "@/stores/useToastStore";
 import type { Game, Session } from "@/types";
@@ -27,15 +29,24 @@ export default function GameDetailPage() {
   const [loading, setLoading]    = useState(true);
   const [launching, setLaunching] = useState(false);
   const [error, setError]        = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDelete, setConfirmDelete]  = useState(false);
+  const [collections,   setCollections]    = useState<Collection[]>([]);
+  const [memberIds,     setMemberIds]      = useState<Set<string>>(new Set());
+  const [collMenuOpen,  setCollMenuOpen]   = useState(false);
+  const [collLoading,   setCollLoading]    = useState(false);
   const { addToast } = useToastStore();
 
   useEffect(() => {
     if (!id) return;
 
     setLoading(true);
-    Promise.all([getGame(id), getSessions(id)])
-      .then(([g, s]) => { setGame(g); setSessions(s); })
+    Promise.all([getGame(id), getSessions(id), getCollections()])
+      .then(([g, s, cols]) => {
+        setGame(g);
+        setSessions(s);
+        setCollections(cols);
+        setMemberIds(new Set(cols.filter(c => c.game_ids.includes(id)).map(c => c.id)));
+      })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, [id]);
@@ -66,6 +77,27 @@ export default function GameDetailPage() {
       navigate("/library");
     } catch (err) {
       addToast({ message: "Failed to delete game", type: "error" });
+    }
+  };
+
+  const handleToggleCollection = async (col: Collection) => {
+    if (!game) return;
+    setCollLoading(true);
+    try {
+      const isMember = memberIds.has(col.id);
+      if (isMember) {
+        await removeGameFromCollection(col.id, game.id);
+        setMemberIds(prev => { const s = new Set(prev); s.delete(col.id); return s; });
+        addToast({ message: `Removed from "${col.name}"`, type: "info" });
+      } else {
+        await addGameToCollection(col.id, game.id);
+        setMemberIds(prev => new Set([...prev, col.id]));
+        addToast({ message: `Added to "${col.name}"`, type: "success" });
+      }
+    } catch {
+      addToast({ message: "Collection update failed", type: "error" });
+    } finally {
+      setCollLoading(false);
     }
   };
 
@@ -177,6 +209,52 @@ export default function GameDetailPage() {
                   fill={game.is_favorite ? "currentColor" : "none"}
                 />
               </button>
+
+              {/* Add to Collection */}
+              <div style={{ position: "relative" }}>
+                <button
+                  onClick={() => setCollMenuOpen(v => !v)}
+                  style={{
+                    ...styles.iconBtn,
+                    color: collMenuOpen ? "var(--color-text-primary)" : "var(--color-text-disabled)",
+                  }}
+                  aria-label="Add to collection"
+                  aria-expanded={collMenuOpen}
+                  aria-haspopup="listbox"
+                >
+                  <FolderPlus size={15} />
+                </button>
+                {collMenuOpen && (
+                  <div
+                    style={styles.collMenu}
+                    role="listbox"
+                    aria-label="Collections"
+                  >
+                    {collections.length === 0 && (
+                      <p style={styles.collMenuEmpty}>No collections yet</p>
+                    )}
+                    {collections.map(col => {
+                      const isMember = memberIds.has(col.id);
+                      return (
+                        <button
+                          key={col.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isMember}
+                          onClick={() => handleToggleCollection(col)}
+                          disabled={collLoading}
+                          style={styles.collMenuItem}
+                        >
+                          {isMember
+                            ? <Check size={11} style={{ color: "var(--color-text-secondary)", flexShrink: 0 }} />
+                            : <span style={{ width: 11, flexShrink: 0 }} />}
+                          <span style={styles.collMenuLabel}>{col.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               {/* Edit */}
               <button
@@ -429,5 +507,48 @@ const styles = {
     color:      "var(--color-text-primary)",
     fontFamily: "var(--font-mono)",
     fontSize:   12,
+  },
+  collMenu: {
+    position:     "absolute" as const,
+    top:          "calc(100% + 8px)",
+    left:         "50%",
+    transform:    "translateX(-50%)",
+    background:   "var(--color-surface)",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    minWidth:     180,
+    zIndex:       50,
+    boxShadow:    "0 8px 24px rgba(0,0,0,0.4)",
+    padding:      "6px 0",
+    display:      "flex",
+    flexDirection: "column" as const,
+  },
+  collMenuEmpty: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      11,
+    color:         "var(--color-text-disabled)",
+    padding:       "8px 14px",
+    margin:        0,
+    letterSpacing: "0.06em",
+  },
+  collMenuItem: {
+    display:     "flex",
+    alignItems:  "center",
+    gap:         8,
+    background:  "none",
+    border:      "none",
+    padding:     "8px 14px",
+    cursor:      "pointer",
+    width:       "100%",
+    textAlign:   "left" as const,
+    transition:  "background 100ms",
+  },
+  collMenuLabel: {
+    fontFamily:   "var(--font-body)",
+    fontSize:     13,
+    color:        "var(--color-text-primary)",
+    overflow:     "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace:   "nowrap" as const,
   },
 } satisfies Record<string, React.CSSProperties | string>;

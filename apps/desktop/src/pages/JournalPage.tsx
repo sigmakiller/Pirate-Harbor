@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, PenLine, Trophy, Gamepad2, X, Trash2, Check } from "lucide-react";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 import {
   getJournalEntries,
@@ -72,6 +73,9 @@ export default function JournalPage() {
   const [editBody,     setEditBody]     = useState("");
   const [editSaving,   setEditSaving]   = useState(false);
 
+  // Delete confirmation
+  const [pendingDeleteEntry, setPendingDeleteEntry] = useState<JournalEntry | null>(null);
+
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async () => {
@@ -120,9 +124,14 @@ export default function JournalPage() {
   };
 
   const handleDelete = async (entry: JournalEntry) => {
-    if (!window.confirm("Delete this entry permanently?")) return;
-    await deleteJournalEntry(entry.id);
-    setEntries(prev => prev.filter(e => e.id !== entry.id));
+    setPendingDeleteEntry(entry);
+  };
+
+  const confirmDeleteEntry = async () => {
+    if (!pendingDeleteEntry) return;
+    await deleteJournalEntry(pendingDeleteEntry.id);
+    setEntries(prev => prev.filter(e => e.id !== pendingDeleteEntry.id));
+    setPendingDeleteEntry(null);
   };
 
   const startEdit = (entry: JournalEntry) => {
@@ -429,6 +438,17 @@ export default function JournalPage() {
           ))}
         </div>
       </main>
+
+      {/* Confirm delete entry dialog */}
+      <ConfirmDialog
+        open={pendingDeleteEntry !== null}
+        title="Delete entry"
+        message="Delete this journal entry permanently? This cannot be undone."
+        confirmLabel="Delete"
+        dangerous
+        onConfirm={confirmDeleteEntry}
+        onCancel={() => setPendingDeleteEntry(null)}
+      />
     </div>
   );
 }
