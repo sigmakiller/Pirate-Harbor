@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
-import Sidebar from "@/components/Sidebar";
-import TopBar from "@/components/TopBar";
+import Sidebar        from "@/components/Sidebar";
+import TopBar         from "@/components/TopBar";
+import ToastContainer from "@/components/ToastContainer";
 
 export default function AppLayout() {
   return (
@@ -39,6 +40,9 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* ── Toast notifications (always mounted, fixed position) ── */}
+      <ToastContainer />
     </div>
   );
 }

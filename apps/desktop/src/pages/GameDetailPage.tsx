@@ -9,22 +9,26 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Star } from "lucide-react";
+import { ArrowLeft, Play, Star, Pencil, Trash2 } from "lucide-react";
 
-import { AmbientLayer } from "@/components/AmbientLayer";
-import { getGame, getSessions, launchGame, toggleFavorite } from "@/lib/api";
-import { formatPlaytime, formatRelativeDate } from "@/lib/utils";
+import { AmbientLayer }    from "@/components/AmbientLayer";
+import ConfirmDialog        from "@/components/ConfirmDialog";
+import { getGame, getSessions, launchGame, toggleFavorite, deleteGame } from "@/lib/api";
+import { formatPlaytime, formatRelativeDate }   from "@/lib/utils";
+import { useToastStore }    from "@/stores/useToastStore";
 import type { Game, Session } from "@/types";
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [game, setGame]       = useState<Game | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [game, setGame]         = useState<Game | null>(null);
+  const [sessions, setSessions]  = useState<Session[]>([]);
+  const [loading, setLoading]    = useState(true);
   const [launching, setLaunching] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
+  const [error, setError]        = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const { addToast } = useToastStore();
 
   useEffect(() => {
     if (!id) return;
@@ -52,6 +56,17 @@ export default function GameDetailPage() {
     if (!game) return;
     const updated = await toggleFavorite(game.id);
     setGame(updated);
+  };
+
+  const handleDelete = async () => {
+    if (!game) return;
+    try {
+      await deleteGame(game.id);
+      addToast({ message: `"${game.title}" removed from library`, type: "success" });
+      navigate("/library");
+    } catch (err) {
+      addToast({ message: "Failed to delete game", type: "error" });
+    }
   };
 
   // ── Loading ───────────────────────────────────────────────────────────────
@@ -162,9 +177,38 @@ export default function GameDetailPage() {
                   fill={game.is_favorite ? "currentColor" : "none"}
                 />
               </button>
+
+              {/* Edit */}
+              <button
+                onClick={() => navigate(`/library/${game.id}/edit`)}
+                style={styles.iconBtn}
+                aria-label="Edit game"
+              >
+                <Pencil size={15} />
+              </button>
+
+              {/* Delete */}
+              <button
+                onClick={() => setConfirmDelete(true)}
+                style={{ ...styles.iconBtn, color: "var(--color-text-disabled)" }}
+                aria-label="Delete game"
+              >
+                <Trash2 size={15} />
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Confirm delete dialog */}
+        <ConfirmDialog
+          open={confirmDelete}
+          title="Delete game"
+          message={`Remove "${game.title}" from your library? This will also delete all play sessions. This cannot be undone.`}
+          confirmLabel="Delete"
+          dangerous
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(false)}
+        />
 
         {/* Stats row */}
         <div style={styles.statsRow}>
