@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS collections (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
     description   TEXT,
+    cover_path    TEXT,
+    cover_mode    TEXT NOT NULL DEFAULT 'auto',
     cover_game_id TEXT REFERENCES games(id) ON DELETE SET NULL,
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL

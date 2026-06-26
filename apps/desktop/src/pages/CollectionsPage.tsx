@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate }                        from "react-router-dom";
 import { Plus, X, Trash2, FolderOpen } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { FilePickerButton } from "@/components/FilePickerButton";
 
 import {
   getCollections,
@@ -40,11 +41,13 @@ export default function CollectionsPage() {
   const [selected, setSelected] = useState<Collection | null>(null);
 
   // Create-collection form
-  const [creating,  setCreating]  = useState(false);
-  const [newName,   setNewName]   = useState("");
-  const [newDesc,   setNewDesc]   = useState("");
-  const [saving,    setSaving]    = useState(false);
-  const [createErr, setCreateErr] = useState<string | null>(null);
+  const [creating,       setCreating]       = useState(false);
+  const [newName,        setNewName]        = useState("");
+  const [newDesc,        setNewDesc]        = useState("");
+  const [newCoverMode,   setNewCoverMode]   = useState<'auto' | 'custom'>('auto');
+  const [newCoverPath,   setNewCoverPath]   = useState("");
+  const [saving,         setSaving]         = useState(false);
+  const [createErr,      setCreateErr]      = useState<string | null>(null);
 
   // Delete confirmation
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
@@ -80,10 +83,14 @@ export default function CollectionsPage() {
       const col = await createCollection({
         name:        newName.trim(),
         description: newDesc.trim() || null,
+        cover_mode:  newCoverMode,
+        cover_path:  newCoverMode === 'custom' ? (newCoverPath.trim() || null) : null,
       });
       setCollections(prev => [col, ...prev]);
       setNewName("");
       setNewDesc("");
+      setNewCoverMode('auto');
+      setNewCoverPath("");
       setCreating(false);
     } catch (err) {
       setCreateErr(String(err));
@@ -179,6 +186,44 @@ export default function CollectionsPage() {
                 aria-label="Collection description"
               />
             </div>
+
+            {/* Cover mode toggle */}
+            <div style={styles.coverModeRow} role="group" aria-label="Cover mode">
+              <button
+                type="button"
+                onClick={() => setNewCoverMode('auto')}
+                style={{
+                  ...styles.modeChip,
+                  ...(newCoverMode === 'auto' ? styles.modeChipActive : {}),
+                }}
+                aria-pressed={newCoverMode === 'auto'}
+              >
+                Auto Mosaic
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewCoverMode('custom')}
+                style={{
+                  ...styles.modeChip,
+                  ...(newCoverMode === 'custom' ? styles.modeChipActive : {}),
+                }}
+                aria-pressed={newCoverMode === 'custom'}
+              >
+                Custom Image
+              </button>
+            </div>
+
+            {/* Custom cover picker */}
+            {newCoverMode === 'custom' && (
+              <FilePickerButton
+                id="new-col-cover-picker"
+                value={newCoverPath}
+                onChange={(p: string) => setNewCoverPath(p)}
+                filters={[{ name: "Image", extensions: ["jpg", "jpeg", "png", "webp"] }]}
+                placeholder="Browse for cover image…"
+              />
+            )}
+
             {createErr && <p style={styles.createErr} role="alert">{createErr}</p>}
             <div style={styles.createActions}>
               <button type="button" onClick={() => { setCreating(false); setCreateErr(null); }} style={styles.cancelBtn}>
@@ -226,20 +271,28 @@ export default function CollectionsPage() {
                 tabIndex={0}
                 onKeyDown={e => e.key === "Enter" && setSelected(isActive ? null : col)}
               >
-                {/* Cover mosaic */}
+                {/* Cover — auto mosaic or custom image */}
                 <div style={styles.mosaic} aria-hidden="true">
-                  {[0, 1, 2, 3].map(i => {
-                    const g = mosaic[i];
-                    const src = coverSrc(g);
-                    return (
-                      <div key={i} style={styles.mosaicCell}>
-                        {src
-                          ? <img src={src} alt="" style={styles.mosaicImg} />
-                          : <div style={styles.mosaicPlaceholder} />
-                        }
-                      </div>
-                    );
-                  })}
+                  {col.cover_mode === 'custom' && col.cover_path ? (
+                    <img
+                      src={convertFileSrc(col.cover_path)}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    [0, 1, 2, 3].map(i => {
+                      const g = mosaic[i];
+                      const src = coverSrc(g);
+                      return (
+                        <div key={i} style={styles.mosaicCell}>
+                          {src
+                            ? <img src={src} alt="" style={styles.mosaicImg} />
+                            : <div style={styles.mosaicPlaceholder} />
+                          }
+                        </div>
+                      );
+                    })
+                  )}
                   {/* Dark scrim for legibility */}
                   <div style={styles.mosaicScrim} />
                 </div>
@@ -494,6 +547,28 @@ const styles = {
     color:         "var(--color-base)",
     cursor:        "pointer",
     transition:    "opacity 150ms",
+  },
+  coverModeRow: {
+    display: "flex",
+    gap:     8,
+  },
+  modeChip: {
+    display:       "inline-flex",
+    alignItems:    "center",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    padding:       "5px 14px",
+    fontSize:      11,
+    fontFamily:    "var(--font-mono)",
+    letterSpacing: "0.06em",
+    color:         "var(--color-text-muted)",
+    background:    "none",
+    cursor:        "pointer",
+    transition:    "border-color 150ms, color 150ms",
+  },
+  modeChipActive: {
+    borderColor: "var(--color-text-secondary)",
+    color:       "var(--color-text-primary)",
   },
   emptyState: {
     display:        "flex",

@@ -34,12 +34,14 @@ export default function SettingsPage() {
     useSettingsStore();
 
   // ── Scan directories state ─────────────────────────────────────────────────
-  const [scanDirs,     setScanDirs]     = useState<string[]>([]);
-  const [scanResults,  setScanResults]  = useState<ScanResult[]>([]);
-  const [scanning,     setScanning]     = useState(false);
-  const [scanError,    setScanError]    = useState<string | null>(null);
-  const [importing,    setImporting]    = useState<Set<string>>(new Set());
-  const [imported,     setImported]     = useState<Set<string>>(new Set());
+  const [scanDirs,         setScanDirs]         = useState<string[]>([]);
+  const [scanResults,      setScanResults]      = useState<ScanResult[]>([]);
+  const [scanning,         setScanning]         = useState(false);
+  const [scanError,        setScanError]        = useState<string | null>(null);
+  const [importing,        setImporting]        = useState<Set<string>>(new Set());
+  const [imported,         setImported]         = useState<Set<string>>(new Set());
+  /** exe_paths that are pre-selected for import (confidence ≥ 0.7) */
+  const [selectedScanPaths, setSelectedScanPaths] = useState<Set<string>>(new Set());
 
   // ── RAWG API key state ──────────────────────────────────────────────────────────
   const [rawgKey,       setRawgKey]       = useState("");
@@ -81,9 +83,17 @@ export default function SettingsPage() {
     setScanning(true);
     setScanError(null);
     setScanResults([]);
+    setSelectedScanPaths(new Set());
     try {
       const results = await scanAllDirectories();
       setScanResults(results);
+      // Auto-select games with confidence >= 0.7; deselect < 0.4
+      const autoSelected = new Set(
+        results
+          .filter(r => !r.already_added && r.confidence >= 0.7)
+          .map(r => r.exe_path)
+      );
+      setSelectedScanPaths(autoSelected);
     } catch (e) {
       setScanError(String(e));
     } finally {
@@ -245,24 +255,74 @@ export default function SettingsPage() {
             {newResults.length > 0 && (
               <div style={styles.resultsList} role="list">
                 {newResults.map((result) => {
-                  const isImporting = importing.has(result.exe_path);
-                  const isDone      = imported.has(result.exe_path) || result.already_added;
+                  const isImporting  = importing.has(result.exe_path);
+                  const isDone       = imported.has(result.exe_path) || result.already_added;
+                  const isSelected   = selectedScanPaths.has(result.exe_path);
+                  const confPct      = Math.round(result.confidence * 100);
+                  const confColor    = result.confidence >= 0.7
+                    ? "var(--color-text-secondary)"
+                    : result.confidence >= 0.4
+                      ? "var(--color-text-muted)"
+                      : "var(--color-text-disabled)";
                   return (
                     <div key={result.exe_path} style={styles.resultRow} role="listitem">
+                      {/* Checkbox */}
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {
+                          setSelectedScanPaths(prev => {
+                            const next = new Set(prev);
+                            if (next.has(result.exe_path)) next.delete(result.exe_path);
+                            else next.add(result.exe_path);
+                            return next;
+                          });
+                        }}
+                        disabled={isDone}
+                        style={{ flexShrink: 0, accentColor: "var(--color-text-secondary)", cursor: "pointer" }}
+                        aria-label={`Select ${result.name} for import`}
+                      />
+
+                      {/* Meta */}
                       <div style={styles.resultMeta}>
                         <span style={styles.resultName}>{result.name}</span>
-                        <code style={styles.resultPath} title={result.exe_path}>
-                          {result.exe_path}
-                        </code>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <code style={styles.resultPath} title={result.exe_path}>
+                            {result.exe_path}
+                          </code>
+                          {result.folder_name && (
+                            <span style={styles.folderTag}>└ {result.folder_name}</span>
+                          )}
+                        </div>
+
+                        {/* Confidence bar */}
+                        <div style={styles.confRow}>
+                          <div style={styles.confTrack}>
+                            <div
+                              style={{
+                                ...styles.confFill,
+                                width: `${confPct}%`,
+                                background: confColor,
+                              }}
+                            />
+                          </div>
+                          <span style={{ ...styles.confLabel, color: confColor }}>
+                            {confPct}%
+                          </span>
+                          <span style={styles.sizeBadge}>
+                            {result.size_mb.toFixed(0)} MB
+                          </span>
+                        </div>
                       </div>
+
                       <button
                         type="button"
                         onClick={() => handleImport(result)}
-                        disabled={isImporting || isDone}
+                        disabled={isImporting || isDone || !isSelected}
                         style={{
                           ...styles.importBtn,
-                          opacity: isImporting || isDone ? 0.4 : 1,
-                          cursor:  isImporting || isDone ? "default" : "pointer",
+                          opacity: isImporting || isDone || !isSelected ? 0.4 : 1,
+                          cursor:  isImporting || isDone || !isSelected ? "default" : "pointer",
                         }}
                         aria-label={`Add ${result.name} to library`}
                       >
@@ -703,6 +763,43 @@ const styles = {
     fontSize:      10,
     color:         "var(--color-text-disabled)",
     letterSpacing: "0.08em",
+  },
+  folderTag: {
+    fontFamily:   "var(--font-mono)",
+    fontSize:     10,
+    color:        "var(--color-text-disabled)",
+    flexShrink:   0,
+  },
+  confRow: {
+    display:    "flex",
+    alignItems: "center",
+    gap:        8,
+    marginTop:  4,
+  },
+  confTrack: {
+    flex:         "0 0 100px",
+    height:       3,
+    background:   "var(--color-elevated)",
+    borderRadius: 99,
+    overflow:     "hidden",
+  },
+  confFill: {
+    height:       "100%",
+    borderRadius: 99,
+    transition:   "width 300ms",
+  },
+  confLabel: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      10,
+    letterSpacing: "0.06em",
+    flexShrink:    0,
+  },
+  sizeBadge: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      10,
+    color:         "var(--color-text-disabled)",
+    letterSpacing: "0.04em",
+    flexShrink:    0,
   },
   knownDetails: {
     borderTop: "1px solid var(--color-border-sub)",

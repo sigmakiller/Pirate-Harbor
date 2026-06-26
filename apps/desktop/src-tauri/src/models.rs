@@ -126,6 +126,12 @@ pub struct ScanResult {
     pub exe_path:      String,
     /// True if this exe_path is already registered in the library
     pub already_added: bool,
+    /// Confidence score 0.0–1.0 derived from heuristics
+    pub confidence:    f64,
+    /// File size in megabytes
+    pub size_mb:       f64,
+    /// Parent folder name (e.g. "TheWitcher3")
+    pub folder_name:   String,
 }
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
@@ -151,6 +157,10 @@ pub struct Collection {
     pub id:            String,
     pub name:          String,
     pub description:   Option<String>,
+    /// Optional path to a user-chosen custom cover image.
+    pub cover_path:    Option<String>,
+    /// "auto" = 2×2 mosaic from game covers | "custom" = cover_path image.
+    pub cover_mode:    String,
     /// ID of the game whose cover is used as the collection hero image.
     pub cover_game_id: Option<String>,
     pub created_at:    String,
@@ -166,6 +176,8 @@ pub struct Collection {
 pub struct NewCollection {
     pub name:          String,
     pub description:   Option<String>,
+    pub cover_path:    Option<String>,
+    pub cover_mode:    Option<String>,
     pub cover_game_id: Option<String>,
 }
 
@@ -174,6 +186,8 @@ pub struct NewCollection {
 pub struct UpdateCollection {
     pub name:          Option<String>,
     pub description:   Option<String>,
+    pub cover_path:    Option<String>,
+    pub cover_mode:    Option<String>,
     pub cover_game_id: Option<String>,
 }
 

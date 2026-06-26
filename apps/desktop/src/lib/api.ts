@@ -123,9 +123,15 @@ export async function getRunningGame(): Promise<string | null> {
 // ── Scanner ───────────────────────────────────────────────────────────────────
 
 export interface ScanResult {
-  name:         string;
-  exe_path:     string;
+  name:          string;
+  exe_path:      string;
   already_added: boolean;
+  /** Heuristic confidence score 0.0–1.0. Higher = more likely a game. */
+  confidence:    number;
+  /** File size in megabytes. */
+  size_mb:       number;
+  /** Parent folder name (e.g. "TheWitcher3"). */
+  folder_name:   string;
 }
 
 /** Return all registered scan directories. */
@@ -197,6 +203,10 @@ export interface Collection {
   id:            string;
   name:          string;
   description:   string | null;
+  /** Absolute path to a user-chosen cover image (used when cover_mode = 'custom'). */
+  cover_path:    string | null;
+  /** 'auto' = 2×2 mosaic from game covers | 'custom' = cover_path image. */
+  cover_mode:    'auto' | 'custom';
   cover_game_id: string | null;
   created_at:    string;
   updated_at:    string;
@@ -205,14 +215,18 @@ export interface Collection {
 }
 
 export interface NewCollection {
-  name:          string;
-  description?:  string | null;
+  name:           string;
+  description?:   string | null;
+  cover_path?:    string | null;
+  cover_mode?:    'auto' | 'custom';
   cover_game_id?: string | null;
 }
 
 export interface UpdateCollection {
   name?:          string;
   description?:   string | null;
+  cover_path?:    string | null;
+  cover_mode?:    'auto' | 'custom';
   cover_game_id?: string | null;
 }
 

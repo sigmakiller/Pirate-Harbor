@@ -1,4 +1,4 @@
-//! Watched-folder scanner commands — T10.
+//! Watched-folder scanner commands — T10 (M3 updated: confidence scoring).
 //!
 //! The scanner walks registered directories looking for `.exe` files,
 //! cross-references them against the library, and returns candidates
@@ -20,6 +20,9 @@ use crate::models::ScanResult;
 
 /// Maximum directory depth to recurse. Games are rarely nested > 4 levels.
 const MAX_DEPTH: usize = 4;
+
+/// Minimum executable size in bytes (20 MB). Files smaller are skipped.
+const MIN_EXE_SIZE: u64 = 20 * 1024 * 1024;
 
 /// Well-known utility executables that are never game launchers.
 const BLOCKLIST: &[&str] = &[
@@ -90,6 +93,73 @@ fn load_known_paths(db_state: &State<'_, DbState>) -> Result<HashSet<String>, St
     Ok(paths)
 }
 
+// ── Confidence scoring ────────────────────────────────────────────────────────
+
+/// Compute a heuristic confidence score (0.0–1.0) for a candidate executable.
+///
+/// Factors:
+///   +0.3 — exe is inside a named subfolder (not the scan root itself)
+///   +0.2 — folder contains typical game file extensions (.dll, .pak, etc.)
+///   +0.2 — exe stem matches the parent folder name (e.g. witcher3/witcher3.exe)
+///   +0.2 — exe lives inside a /bin/ or /binaries/ subdirectory
+///   +0.1 — file size > 50 MB
+fn compute_confidence(path: &Path, exe_stem: &str) -> f64 {
+    let mut score: f64 = 0.0;
+
+    // +0.3 if exe is inside a named subfolder (has a parent with a name)
+    if path.parent().and_then(|p| p.file_name()).is_some() {
+        score += 0.3;
+    }
+
+    // +0.2 if folder contains typical game file extensions
+    if let Some(parent) = path.parent() {
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            let has_game_files = entries
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(|ext| ext.to_lowercase())
+                })
+                .any(|ext| matches!(ext.as_str(), "dll" | "pak" | "uasset" | "unity3d" | "pck"));
+            if has_game_files {
+                score += 0.2;
+            }
+        }
+    }
+
+    // +0.2 if exe stem matches parent folder name (case-insensitive)
+    if let Some(folder_name) = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|f| f.to_str())
+    {
+        if exe_stem.to_lowercase() == folder_name.to_lowercase() {
+            score += 0.2;
+        }
+    }
+
+    // +0.2 if exe is inside a known game binary directory
+    let path_str = path.to_string_lossy().to_lowercase();
+    if path_str.contains("\\bin\\")
+        || path_str.contains("\\binaries\\")
+        || path_str.contains("/bin/")
+        || path_str.contains("/binaries/")
+    {
+        score += 0.2;
+    }
+
+    // +0.1 if file size > 50 MB
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() > 50 * 1024 * 1024 {
+            score += 0.1;
+        }
+    }
+
+    score.min(1.0)
+}
+
 // ── Directory management commands ─────────────────────────────────────────────
 
 /// Return all registered scan directories.
@@ -132,7 +202,8 @@ pub fn remove_scan_directory(
 
 // ── Core scanner ──────────────────────────────────────────────────────────────
 
-/// Walk a single root directory and return candidate executables.
+/// Walk a single root directory and return candidate executables, sorted by
+/// confidence descending (highest first).
 fn do_scan(root: &str, known_paths: &HashSet<String>) -> Vec<ScanResult> {
     let mut results: Vec<ScanResult> = WalkDir::new(root)
         .max_depth(MAX_DEPTH)
@@ -155,18 +226,47 @@ fn do_scan(root: &str, known_paths: &HashSet<String>) -> Vec<ScanResult> {
                 .unwrap_or("")
                 .to_string();
 
+            // Blocklist filter — use exact stem match to avoid "setuptown" false positives
             let stem_lower = stem.to_lowercase();
-            if BLOCKLIST.iter().any(|b| stem_lower.contains(b)) {
+            if BLOCKLIST.iter().any(|b| stem_lower == *b) {
                 return None;
             }
 
-            let exe_path = path.to_string_lossy().into_owned();
+            // Size filter — skip exes under 20 MB
+            let metadata = std::fs::metadata(path).ok()?;
+            let size_bytes = metadata.len();
+            if size_bytes < MIN_EXE_SIZE {
+                return None;
+            }
+
+            let size_mb      = size_bytes as f64 / (1024.0 * 1024.0);
+            let confidence   = compute_confidence(path, &stem);
+            let folder_name  = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|f| f.to_str())
+                .unwrap_or("")
+                .to_string();
+            let exe_path     = path.to_string_lossy().into_owned();
             let already_added = known_paths.contains(&exe_path);
-            Some(ScanResult { name: stem, exe_path, already_added })
+
+            Some(ScanResult {
+                name: stem,
+                exe_path,
+                already_added,
+                confidence,
+                size_mb,
+                folder_name,
+            })
         })
         .collect();
 
-    results.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    // Sort by confidence descending (highest probability first)
+    results.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     results.dedup_by(|a, b| a.exe_path == b.exe_path);
     results
 }
@@ -209,9 +309,14 @@ pub fn scan_all_directories(
         .flat_map(|d| do_scan(d, &known_paths))
         .collect();
 
+    // Global dedup by exe_path, then re-sort by confidence
     let mut seen = HashSet::new();
     all.retain(|r| seen.insert(r.exe_path.clone()));
-    all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    all.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Ok(all)
 }
