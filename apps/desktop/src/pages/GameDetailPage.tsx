@@ -7,7 +7,7 @@
  *   3. Monochrome UI — metadata, stats, launch button
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Play, Star, Pencil, Trash2, FolderPlus, Check } from "lucide-react";
 
@@ -16,6 +16,7 @@ import ConfirmDialog        from "@/components/ConfirmDialog";
 import { getGame, getSessions, launchGame, toggleFavorite, deleteGame,
          getCollections, addGameToCollection, removeGameFromCollection,
          type Collection } from "@/lib/api";
+import { useGameStoppedListener } from "@/hooks/useGameStoppedListener";
 import { formatPlaytime, formatRelativeDate }   from "@/lib/utils";
 import { useToastStore }    from "@/stores/useToastStore";
 import type { Game, Session } from "@/types";
@@ -50,6 +51,17 @@ export default function GameDetailPage() {
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Re-fetch game + sessions silently when the monitored game stops
+  // (the toast is shown by AppLayout's global handler)
+  const handleGameStopped = useCallback((stoppedId: string) => {
+    if (stoppedId !== id) return;
+    Promise.all([getGame(stoppedId), getSessions(stoppedId)])
+      .then(([g, s]) => { setGame(g); setSessions(s); })
+      .catch(() => {/* non-fatal — data will refresh on next navigation */});
+  }, [id]);
+
+  useGameStoppedListener(handleGameStopped);
 
   const handleLaunch = async () => {
     if (!game) return;

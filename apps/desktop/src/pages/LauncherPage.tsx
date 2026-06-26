@@ -11,12 +11,13 @@
  * If no games exist, a welcome state prompts the user to add their first game.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Play, Plus, Clock } from "lucide-react";
 
 import { launchGame, getAllGames } from "@/lib/api";
 import { formatPlaytime, formatRelativeDate } from "@/lib/utils";
+import { useGameStoppedListener }             from "@/hooks/useGameStoppedListener";
 import type { Game } from "@/types";
 
 export default function LauncherPage() {
@@ -27,10 +28,10 @@ export default function LauncherPage() {
   const [launching, setLaunching] = useState(false);
   const [error,     setError]     = useState<string | null>(null);
 
-  useEffect(() => {
+  /** Fetch all games, sort by last_played descending (nulls last). */
+  const loadGames = useCallback(() => {
     getAllGames()
       .then((data) => {
-        // Sort by last_played descending — nulls last
         const sorted = [...data].sort((a, b) => {
           if (!a.last_played && !b.last_played) return 0;
           if (!a.last_played) return 1;
@@ -42,6 +43,13 @@ export default function LauncherPage() {
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadGames();
+  }, [loadGames]);
+
+  // Refresh hero + recent activity whenever any game session ends
+  useGameStoppedListener(loadGames);
 
   const handleLaunch = async (game: Game) => {
     setLaunching(true);
