@@ -114,7 +114,7 @@ export default function MilestonesPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div style={styles.root}>
+    <div className="atlas-enter" style={styles.root}>
 
       {/* ── Stats sidebar ─────────────────────────────────────────────────── */}
       <aside style={styles.sidebar}>

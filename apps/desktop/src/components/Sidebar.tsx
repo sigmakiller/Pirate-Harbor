@@ -77,10 +77,12 @@ export default function Sidebar() {
       >
         {NAV_ITEMS.map(({ label, icon: Icon, to, deferred }) => {
           const isActive = location.pathname.startsWith(to);
-          const baseColor = deferred
-            ? "var(--color-text-disabled)"
-            : isActive
+          // Active always wins regardless of deferred flag;
+          // deferred only dims inactive items.
+          const baseColor = isActive
             ? "var(--color-text-primary)"
+            : deferred
+            ? "var(--color-text-disabled)"
             : "var(--color-text-secondary)";
           return (
             <NavLink
@@ -105,7 +107,7 @@ export default function Sidebar() {
                   (e.currentTarget as HTMLAnchorElement).style.background =
                     "rgba(255,255,255,0.04)";
                   (e.currentTarget as HTMLAnchorElement).style.color =
-                    deferred ? "var(--color-text-muted)" : "var(--color-text-primary)";
+                    "var(--color-text-secondary)";
                 }
               }}
               onMouseLeave={(e) => {

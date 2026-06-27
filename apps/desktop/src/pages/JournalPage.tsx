@@ -173,7 +173,7 @@ export default function JournalPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div style={styles.root}>
+    <div className="atlas-enter" style={styles.root}>
 
       {/* ── Left sidebar: filter ─────────────────────────────────────────────── */}
       <aside style={styles.sidebar}>
