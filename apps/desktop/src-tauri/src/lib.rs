@@ -54,6 +54,7 @@ pub fn run() {
             commands::scanner::remove_scan_directory,
             commands::scanner::scan_directory,
             commands::scanner::scan_all_directories,
+            commands::scanner::batch_add_games,
             // ── Metadata ──────────────────────────────────────────────────────
             commands::metadata::search_game_metadata,
             commands::metadata::get_rawg_api_key,

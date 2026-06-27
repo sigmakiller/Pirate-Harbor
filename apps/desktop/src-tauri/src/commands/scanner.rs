@@ -14,7 +14,7 @@ use tauri::State;
 use walkdir::WalkDir;
 
 use crate::db::DbState;
-use crate::models::ScanResult;
+use crate::models::{Game, NewGame, ScanResult};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -319,4 +319,99 @@ pub fn scan_all_directories(
     });
 
     Ok(all)
+}
+
+/// Bulk-add a list of games from scan results, skipping any whose exe_path
+/// already exists in the library. Returns the list of successfully inserted games.
+#[tauri::command]
+pub fn batch_add_games(
+    db_state: State<'_, DbState>,
+    games: Vec<NewGame>,
+) -> Result<Vec<Game>, String> {
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    if games.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let now  = Utc::now().to_rfc3339();
+
+    let mut inserted: Vec<Game> = Vec::new();
+
+    for game in games {
+        // Skip if exe_path is already in the library
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM games WHERE exe_path = ?1",
+                rusqlite::params![game.exe_path],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
+
+        if exists {
+            continue;
+        }
+
+        let id          = Uuid::new_v4().to_string();
+        let status_str  = game.status.as_ref().map(|s| s.as_str()).unwrap_or("unplayed").to_string();
+
+        let result = conn.execute(
+            "INSERT INTO games
+                 (id, title, exe_path, cover_path, banner_path, developer,
+                  publisher, genre, is_favorite, added_at, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10)",
+            rusqlite::params![
+                id,
+                game.title,
+                game.exe_path,
+                game.cover_path,
+                game.banner_path,
+                game.developer,
+                game.publisher,
+                game.genre,
+                now,
+                status_str
+            ],
+        );
+
+        if result.is_err() {
+            continue; // skip on constraint errors (e.g. race condition)
+        }
+
+        // Re-read the fully hydrated Game row
+        if let Ok(g) = conn.query_row(
+            "SELECT id, title, exe_path, cover_path, banner_path, developer,
+                    publisher, genre, is_favorite, added_at, last_played,
+                    total_playtime_secs, launch_count, status
+             FROM games WHERE id = ?1",
+            rusqlite::params![id],
+            |row| {
+                let status_s: String = row.get(13)?;
+                let parsed_status = status_s.parse().unwrap_or_default();
+                Ok(Game {
+                    id:                  row.get(0)?,
+                    title:               row.get(1)?,
+                    exe_path:            row.get(2)?,
+                    cover_path:          row.get(3)?,
+                    banner_path:         row.get(4)?,
+                    developer:           row.get(5)?,
+                    publisher:           row.get(6)?,
+                    genre:               row.get(7)?,
+                    is_favorite:         row.get::<_, i64>(8)? != 0,
+                    added_at:            row.get(9)?,
+                    last_played:         row.get(10)?,
+                    total_playtime_secs: row.get(11)?,
+                    launch_count:        row.get(12)?,
+                    status:              parsed_status,
+                })
+            },
+        ) {
+            inserted.push(g);
+        }
+    }
+
+    Ok(inserted)
 }
