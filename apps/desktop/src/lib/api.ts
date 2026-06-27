@@ -168,6 +168,14 @@ export async function scanAllDirectories(): Promise<ScanResult[]> {
   return invoke<ScanResult[]>("scan_all_directories");
 }
 
+/**
+ * Bulk-insert scan results as library games, skipping duplicates by exe_path.
+ * Returns the list of successfully added Game records.
+ */
+export async function batchAddGames(games: NewGame[]): Promise<Game[]> {
+  return invoke<Game[]>("batch_add_games", { games });
+}
+
 // ── Metadata ──────────────────────────────────────────────────────────────────
 
 export interface MetadataResult {

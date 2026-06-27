@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate }                        from "react-router-dom";
 import { Monitor, Database, Info, Check, FolderSearch, Plus, X, Search, RefreshCw, Key } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -30,6 +31,7 @@ import type { NewGame }       from "@/types";
 const APP_VERSION = "0.1.0";
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const { settings, loading, loadSettings, setSetting, getSetting } =
     useSettingsStore();
 
@@ -240,6 +242,19 @@ export default function SettingsPage() {
             </button>
           </div>
         )}
+
+        {/* Shortcut to the full Scan UI */}
+        <div style={{ paddingTop: 8 }}>
+          <button
+            id="open-scan-page-btn"
+            type="button"
+            onClick={() => navigate("/library/scan")}
+            style={styles.linkBtn}
+            aria-label="Open the folder scanner page"
+          >
+            Open Folder Scanner ↗
+          </button>
+        </div>
 
         {scanError && (
           <p style={styles.scanError} role="alert">{scanError}</p>
@@ -684,6 +699,18 @@ const styles = {
     fontSize:    12,
     color:       "var(--color-text-muted)",
     margin:      "8px 0 0",
+  },
+  linkBtn: {
+    background:    "none",
+    border:        "none",
+    padding:       0,
+    fontFamily:    "var(--font-mono)",
+    fontSize:      11,
+    letterSpacing: "0.06em",
+    color:         "var(--color-text-secondary)",
+    cursor:        "pointer",
+    textDecoration: "underline",
+    textUnderlineOffset: 3,
   },
   emptyHint: {
     fontFamily:  "var(--font-body)",

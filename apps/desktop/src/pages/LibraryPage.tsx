@@ -19,6 +19,7 @@ import {
   Plus,
   Search,
   Star,
+  FolderSearch,
   X,
 } from "lucide-react";
 
@@ -156,15 +157,26 @@ export default function LibraryPage() {
               : `${games.length} game${games.length !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <button
-          id="add-game-btn"
-          onClick={() => navigate("/library/add")}
-          style={styles.addBtn}
-          aria-label="Add a game to your library"
-        >
-          <Plus size={14} />
-          Add Game
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            id="scan-folder-btn"
+            onClick={() => navigate("/library/scan")}
+            style={styles.scanBtn}
+            aria-label="Scan a folder for games"
+          >
+            <FolderSearch size={14} />
+            Scan Folder
+          </button>
+          <button
+            id="add-game-btn"
+            onClick={() => navigate("/library/add")}
+            style={styles.addBtn}
+            aria-label="Add a game to your library"
+          >
+            <Plus size={14} />
+            Add Game
+          </button>
+        </div>
       </div>
 
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
@@ -378,6 +390,24 @@ const styles = {
     color:         "var(--color-text-disabled)",
     letterSpacing: "0.08em",
     margin:        0,
+  },
+  scanBtn: {
+    display:       "flex",
+    alignItems:    "center",
+    gap:           6,
+    background:    "none",
+    color:         "var(--color-text-muted)",
+    border:        "1px solid var(--color-border)",
+    padding:       "9px 18px",
+    fontSize:      12,
+    fontFamily:    "var(--font-body)",
+    fontWeight:    500,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+    cursor:        "pointer",
+    borderRadius:  1,
+    transition:    "color 150ms, border-color 150ms",
+    flexShrink:    0,
   },
   addBtn: {
     display:       "flex",

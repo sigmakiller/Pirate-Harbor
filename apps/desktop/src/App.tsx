@@ -11,6 +11,7 @@ import JournalPage from "@/pages/JournalPage";
 import MilestonesPage from "@/pages/MilestonesPage";
 import IdentityPage    from "@/pages/IdentityPage";
 import EditGamePage    from "@/pages/EditGamePage";
+import ScanPage        from "@/pages/ScanPage";
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/launcher"            element={<LauncherPage />} />
           <Route path="/library"             element={<LibraryPage />} />
           <Route path="/library/add"         element={<AddGamePage />} />
+          <Route path="/library/scan"        element={<ScanPage />} />
           <Route path="/library/:id/edit"     element={<EditGamePage />} />
           <Route path="/library/:id"         element={<GameDetailPage />} />
           <Route path="/collections"         element={<CollectionsPage />} />
