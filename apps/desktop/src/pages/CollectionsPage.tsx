@@ -137,7 +137,7 @@ export default function CollectionsPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div style={styles.root}>
+    <div className="atlas-enter" style={styles.root}>
       {/* ── Main column ──────────────────────────────────────────────────────── */}
       <div style={{ ...styles.main, flex: selected ? "0 0 340px" : "1" }}>
 
