@@ -323,6 +323,9 @@ pub fn scan_all_directories(
 
 /// Bulk-add a list of games from scan results, skipping any whose exe_path
 /// already exists in the library. Returns the list of successfully inserted games.
+///
+/// M1 Fix: Now wrapped in a SQLite transaction for improved performance with
+/// large batches (50+ games).
 #[tauri::command]
 pub fn batch_add_games(
     db_state: State<'_, DbState>,
@@ -335,14 +338,17 @@ pub fn batch_add_games(
         return Ok(vec![]);
     }
 
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = db_state.0.lock().map_err(|e| e.to_string())?;
     let now  = Utc::now().to_rfc3339();
+
+    // Start transaction for atomic batch insert (M1 fix)
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     let mut inserted: Vec<Game> = Vec::new();
 
     for game in games {
         // Skip if exe_path is already in the library
-        let exists: bool = conn
+        let exists: bool = tx
             .query_row(
                 "SELECT COUNT(*) FROM games WHERE exe_path = ?1",
                 rusqlite::params![game.exe_path],
@@ -358,7 +364,7 @@ pub fn batch_add_games(
         let id          = Uuid::new_v4().to_string();
         let status_str  = game.status.as_ref().map(|s| s.as_str()).unwrap_or("unplayed").to_string();
 
-        let result = conn.execute(
+        let result = tx.execute(
             "INSERT INTO games
                  (id, title, exe_path, cover_path, banner_path, developer,
                   publisher, genre, is_favorite, added_at, status)
@@ -382,7 +388,7 @@ pub fn batch_add_games(
         }
 
         // Re-read the fully hydrated Game row
-        if let Ok(g) = conn.query_row(
+        if let Ok(g) = tx.query_row(
             "SELECT id, title, exe_path, cover_path, banner_path, developer,
                     publisher, genre, is_favorite, added_at, last_played,
                     total_playtime_secs, launch_count, status
@@ -412,6 +418,9 @@ pub fn batch_add_games(
             inserted.push(g);
         }
     }
+
+    // Commit transaction
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok(inserted)
 }
