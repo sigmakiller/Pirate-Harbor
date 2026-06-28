@@ -749,6 +749,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tokio",
+ "tokio-util",
  "urlencoding",
  "uuid",
  "walkdir",
