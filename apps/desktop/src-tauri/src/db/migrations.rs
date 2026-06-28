@@ -6,7 +6,7 @@
 use rusqlite::Connection;
 
 /// All migrations in order. Each is applied sequentially on first run.
-const MIGRATIONS: &[&str] = &[MIGRATION_001, MIGRATION_002, MIGRATION_003, MIGRATION_004];
+const MIGRATIONS: &[&str] = &[MIGRATION_001, MIGRATION_002, MIGRATION_003, MIGRATION_004, MIGRATION_005];
 
 /// 001 — Initial schema: games, sessions, settings + indexes
 const MIGRATION_001: &str = r#"
@@ -94,6 +94,31 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 
 CREATE INDEX IF NOT EXISTS idx_journal_game    ON journal_entries(game_id);
 CREATE INDEX IF NOT EXISTS idx_journal_created ON journal_entries(created_at DESC);
+"#;
+
+/// 005 — Metadata cache and enrichment queue for RAWG/IGDB integration
+const MIGRATION_005: &str = r#"
+CREATE TABLE IF NOT EXISTS metadata_cache (
+    id          TEXT PRIMARY KEY,
+    game_title  TEXT NOT NULL,
+    provider    TEXT NOT NULL,
+    api_id      INTEGER,
+    metadata    TEXT NOT NULL,
+    cached_at   TEXT NOT NULL,
+    expires_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS metadata_enrichment_queue (
+    id          TEXT PRIMARY KEY,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    priority    INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_metadata_cache_title ON metadata_cache(game_title);
+CREATE INDEX IF NOT EXISTS idx_enrichment_queue_status ON metadata_enrichment_queue(status);
 "#;
 
 /// Apply all migrations to the given connection.

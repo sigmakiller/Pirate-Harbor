@@ -1,3 +1,4 @@
+mod api;
 mod commands;
 mod db;
 mod models;
@@ -57,6 +58,9 @@ pub fn run() {
             commands::scanner::batch_add_games,
             // ── Metadata ──────────────────────────────────────────────────────
             commands::metadata::search_game_metadata,
+            commands::metadata::enrich_game_metadata,
+            commands::metadata::bulk_enrich_library,
+            commands::metadata::get_enrichment_status,
             commands::metadata::get_rawg_api_key,
             // ── Collections ───────────────────────────────────────────────────
             commands::collections::get_collections,
