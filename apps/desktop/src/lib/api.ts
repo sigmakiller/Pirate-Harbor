@@ -205,6 +205,31 @@ export async function getRawgApiKey(): Promise<string | null> {
   return invoke<string | null>("get_rawg_api_key");
 }
 
+/**
+ * Download and process game images (cover and background).
+ * Automatically resizes and converts images to optimal formats.
+ * Emits 'image-download-progress' events during processing.
+ */
+export async function downloadGameImages(
+  gameId: string,
+  coverUrl?: string | null,
+  backgroundUrl?: string | null
+): Promise<ImageDownloadResult> {
+  return invoke<ImageDownloadResult>("download_game_images", {
+    gameId,
+    coverUrl: coverUrl ?? null,
+    backgroundUrl: backgroundUrl ?? null,
+  });
+}
+
+export interface ImageDownloadResult {
+  game_id: string;
+  cover_path: string | null;
+  background_path: string | null;
+  success: boolean;
+  error: string | null;
+}
+
 // ── Collections ───────────────────────────────────────────────────────────────
 
 export interface Collection {

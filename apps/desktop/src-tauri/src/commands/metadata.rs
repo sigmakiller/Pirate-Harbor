@@ -5,11 +5,12 @@
 
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, State};
+use tauri::{Emitter, State, Manager};
 use uuid::Uuid;
 
 use crate::api::rawg::{RawgClient, RawgGame};
 use crate::db::DbState;
+use crate::images::{downloader, processor, ImagePaths, ImageType};
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,16 @@ pub struct EnrichmentProgress {
     pub completed: usize,
     pub pending: usize,
     pub failed: usize,
+}
+
+/// Image download result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageDownloadResult {
+    pub game_id: String,
+    pub cover_path: Option<String>,
+    pub background_path: Option<String>,
+    pub success: bool,
+    pub error: Option<String>,
 }
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
@@ -400,5 +411,109 @@ pub fn get_rawg_api_key(db_state: State<'_, DbState>) -> Result<Option<String>, 
         )
         .ok();
     Ok(key)
+}
+
+/// Download and process game images (cover and background).
+/// Emits 'image-download-progress' events during processing.
+#[tauri::command]
+pub async fn download_game_images(
+    app_handle: tauri::AppHandle,
+    db_state: State<'_, DbState>,
+    game_id: String,
+    cover_url: Option<String>,
+    background_url: Option<String>,
+) -> Result<ImageDownloadResult, String> {
+    // Get app data directory for image storage
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+
+    let image_paths = ImagePaths::new(&app_data_dir)?;
+
+    let now = Utc::now().to_rfc3339();
+    let mut cover_local: Option<String> = None;
+    let mut background_local: Option<String> = None;
+    let mut errors = Vec::new();
+
+    // Download cover
+    if let Some(url) = cover_url {
+        let output_path = image_paths.covers.join(format!("{}_cover.jpg", game_id));
+        let temp_path = image_paths.covers.join(format!("{}_cover_temp.jpg", game_id));
+
+        match downloader::download_image(&url, temp_path.clone()).await {
+            Ok(_) => {
+                // Process and resize
+                let (target_w, target_h) = ImageType::Cover.target_dimensions();
+                match processor::process_downloaded_image(&temp_path, &output_path, target_w, target_h) {
+                    Ok(path) => {
+                        cover_local = Some(path.to_string_lossy().to_string());
+                        // Clean up temp file
+                        let _ = std::fs::remove_file(&temp_path);
+                    }
+                    Err(e) => errors.push(format!("Cover processing failed: {}", e)),
+                }
+            }
+            Err(e) => errors.push(format!("Cover download failed: {}", e)),
+        }
+
+        // Emit progress
+        let _ = app_handle.emit("image-download-progress", serde_json::json!({
+            "game_id": game_id,
+            "type": "cover",
+            "status": if cover_local.is_some() { "success" } else { "failed" }
+        }));
+    }
+
+    // Download background
+    if let Some(url) = background_url {
+        let output_path = image_paths.backgrounds.join(format!("{}_background.jpg", game_id));
+        let temp_path = image_paths.backgrounds.join(format!("{}_background_temp.jpg", game_id));
+
+        match downloader::download_image(&url, temp_path.clone()).await {
+            Ok(_) => {
+                // Process and resize
+                let (target_w, target_h) = ImageType::Background.target_dimensions();
+                match processor::process_downloaded_image(&temp_path, &output_path, target_w, target_h) {
+                    Ok(path) => {
+                        background_local = Some(path.to_string_lossy().to_string());
+                        // Clean up temp file
+                        let _ = std::fs::remove_file(&temp_path);
+                    }
+                    Err(e) => errors.push(format!("Background processing failed: {}", e)),
+                }
+            }
+            Err(e) => errors.push(format!("Background download failed: {}", e)),
+        }
+
+        // Emit progress
+        let _ = app_handle.emit("image-download-progress", serde_json::json!({
+            "game_id": game_id,
+            "type": "background",
+            "status": if background_local.is_some() { "success" } else { "failed" }
+        }));
+    }
+
+    // Update database with local paths
+    if cover_local.is_some() || background_local.is_some() {
+        let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE games SET cover_path_local = ?1, background_path_local = ?2, images_enriched_at = ?3 WHERE id = ?4",
+            rusqlite::params![cover_local, background_local, now, game_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    Ok(ImageDownloadResult {
+        game_id,
+        cover_path: cover_local,
+        background_path: background_local,
+        success: errors.is_empty(),
+        error: if errors.is_empty() {
+            None
+        } else {
+            Some(errors.join("; "))
+        },
+    })
 }
 

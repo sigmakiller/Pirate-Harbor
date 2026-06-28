@@ -1,6 +1,7 @@
 mod api;
 mod commands;
 mod db;
+mod images;
 mod models;
 
 use std::sync::Mutex;
@@ -62,6 +63,7 @@ pub fn run() {
             commands::metadata::bulk_enrich_library,
             commands::metadata::get_enrichment_status,
             commands::metadata::get_rawg_api_key,
+            commands::metadata::download_game_images,
             // ── Collections ───────────────────────────────────────────────────
             commands::collections::get_collections,
             commands::collections::get_collection,

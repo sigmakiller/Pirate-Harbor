@@ -119,6 +119,11 @@ CREATE TABLE IF NOT EXISTS metadata_enrichment_queue (
 
 CREATE INDEX IF NOT EXISTS idx_metadata_cache_title ON metadata_cache(game_title);
 CREATE INDEX IF NOT EXISTS idx_enrichment_queue_status ON metadata_enrichment_queue(status);
+
+-- Image tracking columns for local storage
+ALTER TABLE games ADD COLUMN cover_path_local TEXT;
+ALTER TABLE games ADD COLUMN background_path_local TEXT;
+ALTER TABLE games ADD COLUMN images_enriched_at TEXT;
 "#;
 
 /// Apply all migrations to the given connection.
