@@ -107,3 +107,26 @@ export interface NewMilestoneTemplate {
   difficulty?: MilestoneDifficulty | null;
   is_global:   boolean;
 }
+
+export interface MilestoneStatistics {
+  total_count: number;
+  by_category: Record<string, number>;
+  by_difficulty: Record<string, number>;
+  recent_streak_days: number;
+  completion_rate: number;
+  average_per_week: number;
+  top_games: GameMilestoneCount[];
+  timeline: MilestoneTimelineEntry[];
+}
+
+export interface GameMilestoneCount {
+  game_id: string;
+  game_title: string;
+  milestone_count: number;
+}
+
+export interface MilestoneTimelineEntry {
+  date: string;
+  count: number;
+  category_breakdown: Record<string, number>;
+}

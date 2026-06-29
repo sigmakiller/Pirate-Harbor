@@ -354,7 +354,8 @@ import type {
   Milestone, 
   NewMilestone, 
   MilestoneTemplate, 
-  NewMilestoneTemplate 
+  NewMilestoneTemplate,
+  MilestoneStatistics 
 } from "@/types";
 
 /**
@@ -428,4 +429,16 @@ export async function createMilestoneFromTemplate(
  */
 export async function seedDefaultTemplates(): Promise<number> {
   return invoke<number>("seed_default_templates");
+}
+
+/**
+ * Get comprehensive milestone statistics.
+ * @param gameId - Optional game ID filter
+ */
+export async function getMilestoneStatistics(
+  gameId?: string | null
+): Promise<MilestoneStatistics> {
+  return invoke<MilestoneStatistics>("get_milestone_statistics", {
+    gameId: gameId ?? null,
+  });
 }

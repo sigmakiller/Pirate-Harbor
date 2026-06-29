@@ -1,3 +1,4 @@
+mod analytics;
 mod api;
 mod commands;
 mod db;
@@ -86,6 +87,7 @@ pub fn run() {
             commands::milestones::create_milestone_template,
             commands::milestones::create_milestone_from_template,
             commands::milestones::seed_default_templates,
+            commands::milestones::get_milestone_statistics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
