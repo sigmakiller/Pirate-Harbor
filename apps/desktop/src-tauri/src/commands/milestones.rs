@@ -392,3 +392,90 @@ pub fn get_milestone_statistics(
         game_id.as_deref(),
     )
 }
+
+/// Migrate existing journal entries with entry_type='milestone' to milestones table.
+/// This is a one-time migration that runs automatically on first launch after MIGRATION_006.
+/// Preserves original journal entries and links them via metadata.
+#[tauri::command]
+pub fn migrate_journal_to_milestones(db_state: State<'_, DbState>) -> Result<usize, String> {
+    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+
+    // Check if migration has already run
+    let migrated_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM milestones WHERE metadata LIKE '%migrated_from_journal%'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    if migrated_count > 0 {
+        return Ok(0); // Already migrated
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let mut inserted = 0;
+
+    // Fetch journal entries with entry_type='milestone'
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, game_id, game_title, title, body, created_at
+             FROM journal_entries
+             WHERE entry_type = 'milestone'
+             ORDER BY created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let journal_entries: Vec<(String, Option<String>, Option<String>, Option<String>, String, String)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?, // id
+                row.get::<_, Option<String>>(1)?, // game_id
+                row.get::<_, Option<String>>(2)?, // game_title
+                row.get::<_, Option<String>>(3)?, // title
+                row.get::<_, String>(4)?, // body
+                row.get::<_, String>(5)?, // created_at
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    drop(stmt); // Release borrow
+
+    // Insert into milestones table
+    for (journal_id, game_id, _game_title, title, body, created_at) in journal_entries {
+        let milestone_id = Uuid::new_v4().to_string();
+        let milestone_title = title.unwrap_or_else(|| "Milestone".to_string());
+        let description = if !body.is_empty() { Some(body) } else { None };
+
+        // Create metadata JSON with reference to original journal entry
+        let metadata = serde_json::json!({
+            "migrated_from_journal": true,
+            "original_journal_id": journal_id
+        })
+        .to_string();
+
+        let result = conn.execute(
+            "INSERT INTO milestones
+                 (id, game_id, title, description, category, difficulty,
+                  achievement_date, points, metadata, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 'completion', NULL, ?5, 0, ?6, ?7, ?7)",
+            rusqlite::params![
+                milestone_id,
+                game_id,
+                milestone_title,
+                description,
+                created_at,
+                metadata,
+                now
+            ],
+        );
+
+        if result.is_ok() {
+            inserted += 1;
+        }
+    }
+
+    Ok(inserted)
+}

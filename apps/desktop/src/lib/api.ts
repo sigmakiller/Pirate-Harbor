@@ -442,3 +442,12 @@ export async function getMilestoneStatistics(
     gameId: gameId ?? null,
   });
 }
+
+/**
+ * Migrate existing journal entries with entry_type='milestone' to milestones table.
+ * This is a one-time migration that runs automatically on first launch.
+ * @returns Number of journal entries migrated
+ */
+export async function migrateJournalToMilestones(): Promise<number> {
+  return invoke<number>("migrate_journal_to_milestones");
+}

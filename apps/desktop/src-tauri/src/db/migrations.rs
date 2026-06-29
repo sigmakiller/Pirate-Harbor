@@ -46,9 +46,9 @@ CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);
 CREATE INDEX IF NOT EXISTS idx_games_favorite ON games(is_favorite);
 "#;
 
-/// 002 — Metadata cache: stores RAWG search results keyed by lowercase query
+/// 002 — Search cache: stores RAWG search results keyed by lowercase query
 const MIGRATION_002: &str = r#"
-CREATE TABLE IF NOT EXISTS metadata_cache (
+CREATE TABLE IF NOT EXISTS search_cache (
     query       TEXT PRIMARY KEY,
     results_json TEXT NOT NULL,
     cached_at   TEXT NOT NULL DEFAULT (datetime('now'))
@@ -186,6 +186,7 @@ mod tests {
         assert!(tables.contains(&"games".to_string()));
         assert!(tables.contains(&"sessions".to_string()));
         assert!(tables.contains(&"settings".to_string()));
+        assert!(tables.contains(&"search_cache".to_string()));
         assert!(tables.contains(&"metadata_cache".to_string()));
         assert!(tables.contains(&"collections".to_string()));
         assert!(tables.contains(&"collection_games".to_string()));

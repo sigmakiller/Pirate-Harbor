@@ -21,9 +21,10 @@ import { Trophy, Star, Gamepad2, Clock, BookOpen, ChevronRight } from "lucide-re
 import { useNavigate } from "react-router-dom";
 
 import {
-  getJournalEntries,
+  getMilestones,
+  migrateJournalToMilestones,
   getAllGames,
-  type JournalEntry,
+  type Milestone,
 } from "@/lib/api";
 import type { Game } from "@/types";
 import { formatPlaytime } from "@/lib/utils";
@@ -43,19 +44,26 @@ function formatDate(iso: string) {
 export default function MilestonesPage() {
   const navigate = useNavigate();
 
-  const [milestones, setMilestones] = useState<JournalEntry[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [games,      setGames]      = useState<Game[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [activeGame, setActiveGame] = useState<string | null>(null); // filter
 
   const load = useCallback(async () => {
     setLoading(true);
+    
+    // Run migration if needed (one-time operation)
+    try {
+      await migrateJournalToMilestones();
+    } catch (e) {
+      console.warn("Journal migration already completed or failed:", e);
+    }
+    
     const [ms, gs] = await Promise.all([
-      getJournalEntries(null, 500),
+      getMilestones(null, null, 500),
       getAllGames({}),
     ]);
-    // Only milestone entries
-    setMilestones(ms.filter(e => e.entry_type === "milestone"));
+    setMilestones(ms);
     setGames(gs);
     setLoading(false);
   }, []);
@@ -95,17 +103,18 @@ export default function MilestonesPage() {
   const totalPlaytime  = games.reduce((s, g) => s + (g.total_playtime_secs ?? 0), 0);
 
   // Group visible milestones by game (for timeline)
-  type GameGroup = { gameId: string | null; gameTitle: string; milestones: JournalEntry[] };
+  type GameGroup = { gameId: string | null; gameTitle: string; milestones: Milestone[] };
   const gameGroups: GameGroup[] = [];
   for (const m of visible) {
     const gid = m.game_id ?? "__global";
+    const gameTitle = m.game_id && gameMap[m.game_id] ? gameMap[m.game_id].title : "Library";
     const last = gameGroups[gameGroups.length - 1];
     if (last?.gameId === gid) {
       last.milestones.push(m);
     } else {
       gameGroups.push({
         gameId:     m.game_id ?? null,
-        gameTitle:  m.game_title ?? "Library",
+        gameTitle,
         milestones: [m],
       });
     }
@@ -224,21 +233,24 @@ export default function MilestonesPage() {
               Highlighted
             </p>
             <div style={styles.rareGrid} role="list">
-              {rareMilestones.map(m => (
-                <div
-                  key={m.id}
-                  style={styles.rareCard}
-                  role="listitem"
-                  aria-label={m.title ?? "Milestone"}
-                >
-                  <span style={styles.rareDateStamp}>{formatDate(m.created_at)}</span>
-                  <Trophy size={16} style={styles.rareTrophyIcon} aria-hidden="true" />
-                  <p style={styles.rareTitle}>{m.title}</p>
-                  {m.game_title && (
-                    <p style={styles.rareGame}>{m.game_title}</p>
-                  )}
-                </div>
-              ))}
+              {rareMilestones.map(m => {
+                const gameTitle = m.game_id && gameMap[m.game_id] ? gameMap[m.game_id].title : null;
+                return (
+                  <div
+                    key={m.id}
+                    style={styles.rareCard}
+                    role="listitem"
+                    aria-label={m.title ?? "Milestone"}
+                  >
+                    <span style={styles.rareDateStamp}>{formatDate(m.achievement_date)}</span>
+                    <Trophy size={16} style={styles.rareTrophyIcon} aria-hidden="true" />
+                    <p style={styles.rareTitle}>{m.title}</p>
+                    {gameTitle && (
+                      <p style={styles.rareGame}>{gameTitle}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
@@ -282,13 +294,13 @@ export default function MilestonesPage() {
                       {/* Content */}
                       <div style={styles.milestoneContent}>
                         <div style={styles.milestoneMeta}>
-                          <span style={styles.milestoneDate}>{formatDate(m.created_at)}</span>
+                          <span style={styles.milestoneDate}>{formatDate(m.achievement_date)}</span>
                         </div>
                         {m.title && (
                           <p style={styles.milestoneTitle}>{m.title}</p>
                         )}
-                        {m.body && (
-                          <p style={styles.milestoneBody}>{m.body}</p>
+                        {m.description && (
+                          <p style={styles.milestoneBody}>{m.description}</p>
                         )}
                       </div>
                     </div>
