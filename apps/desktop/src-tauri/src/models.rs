@@ -259,3 +259,139 @@ pub struct UpdateJournalEntry {
     pub body:       Option<String>,
     pub entry_type: Option<EntryType>,
 }
+
+// ── Milestones ────────────────────────────────────────────────────────────────
+
+/// Milestone category
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MilestoneCategory {
+    Completion,
+    Progress,
+    Exploration,
+    Mastery,
+    Social,
+    Custom,
+}
+
+impl MilestoneCategory {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MilestoneCategory::Completion  => "completion",
+            MilestoneCategory::Progress    => "progress",
+            MilestoneCategory::Exploration => "exploration",
+            MilestoneCategory::Mastery     => "mastery",
+            MilestoneCategory::Social      => "social",
+            MilestoneCategory::Custom      => "custom",
+        }
+    }
+}
+
+impl Default for MilestoneCategory {
+    fn default() -> Self {
+        MilestoneCategory::Custom
+    }
+}
+
+impl std::str::FromStr for MilestoneCategory {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "completion"  => Ok(MilestoneCategory::Completion),
+            "progress"    => Ok(MilestoneCategory::Progress),
+            "exploration" => Ok(MilestoneCategory::Exploration),
+            "mastery"     => Ok(MilestoneCategory::Mastery),
+            "social"      => Ok(MilestoneCategory::Social),
+            "custom"      => Ok(MilestoneCategory::Custom),
+            other         => Err(format!("Unknown category: {}", other)),
+        }
+    }
+}
+
+/// Milestone difficulty
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MilestoneDifficulty {
+    Trivial,
+    Easy,
+    Normal,
+    Hard,
+    Legendary,
+}
+
+impl MilestoneDifficulty {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MilestoneDifficulty::Trivial   => "trivial",
+            MilestoneDifficulty::Easy      => "easy",
+            MilestoneDifficulty::Normal    => "normal",
+            MilestoneDifficulty::Hard      => "hard",
+            MilestoneDifficulty::Legendary => "legendary",
+        }
+    }
+}
+
+impl std::str::FromStr for MilestoneDifficulty {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "trivial"   => Ok(MilestoneDifficulty::Trivial),
+            "easy"      => Ok(MilestoneDifficulty::Easy),
+            "normal"    => Ok(MilestoneDifficulty::Normal),
+            "hard"      => Ok(MilestoneDifficulty::Hard),
+            "legendary" => Ok(MilestoneDifficulty::Legendary),
+            other       => Err(format!("Unknown difficulty: {}", other)),
+        }
+    }
+}
+
+/// A formal milestone achievement record
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Milestone {
+    pub id:               String,
+    pub game_id:          String,
+    pub title:            String,
+    pub description:      Option<String>,
+    pub category:         MilestoneCategory,
+    pub difficulty:       Option<MilestoneDifficulty>,
+    pub achievement_date: String,
+    pub points:           i64,
+    pub metadata:         Option<String>,
+    pub created_at:       String,
+    pub updated_at:       String,
+}
+
+/// Payload for creating a new milestone
+#[derive(Debug, Deserialize)]
+pub struct NewMilestone {
+    pub game_id:          String,
+    pub title:            String,
+    pub description:      Option<String>,
+    pub category:         MilestoneCategory,
+    pub difficulty:       Option<MilestoneDifficulty>,
+    pub achievement_date: Option<String>,  // Optional, defaults to now
+    pub points:           Option<i64>,
+    pub metadata:         Option<String>,
+}
+
+/// Milestone template for quick creation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MilestoneTemplate {
+    pub id:          String,
+    pub title:       String,
+    pub description: Option<String>,
+    pub category:    MilestoneCategory,
+    pub difficulty:  Option<MilestoneDifficulty>,
+    pub is_global:   bool,
+    pub created_at:  String,
+}
+
+/// Payload for creating a milestone template
+#[derive(Debug, Deserialize)]
+pub struct NewMilestoneTemplate {
+    pub title:       String,
+    pub description: Option<String>,
+    pub category:    MilestoneCategory,
+    pub difficulty:  Option<MilestoneDifficulty>,
+    pub is_global:   bool,
+}

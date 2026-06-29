@@ -78,6 +78,14 @@ pub fn run() {
             commands::journal::create_journal_entry,
             commands::journal::update_journal_entry,
             commands::journal::delete_journal_entry,
+            // ── Milestones ────────────────────────────────────────────────────────
+            commands::milestones::create_milestone,
+            commands::milestones::get_milestones,
+            commands::milestones::delete_milestone,
+            commands::milestones::get_milestone_templates,
+            commands::milestones::create_milestone_template,
+            commands::milestones::create_milestone_from_template,
+            commands::milestones::seed_default_templates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
