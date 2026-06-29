@@ -12,6 +12,7 @@ use crate::models::{
     Milestone, MilestoneTemplate,
     NewMilestone, NewMilestoneTemplate,
 };
+use crate::analytics::milestones as milestone_analytics;
 
 // ── CRUD Commands ─────────────────────────────────────────────────────────────
 
@@ -376,4 +377,18 @@ pub fn seed_default_templates(db_state: State<'_, DbState>) -> Result<usize, Str
     }
 
     Ok(inserted)
+}
+
+// ── Statistics ────────────────────────────────────────────────────────────────
+
+/// Get comprehensive milestone statistics
+#[tauri::command]
+pub fn get_milestone_statistics(
+    db_state: State<'_, DbState>,
+    game_id: Option<String>,
+) -> Result<milestone_analytics::MilestoneStatistics, String> {
+    milestone_analytics::calculate_statistics(
+        &db_state,
+        game_id.as_deref(),
+    )
 }
