@@ -347,3 +347,85 @@ export async function updateJournalEntry(
 export async function deleteJournalEntry(id: string): Promise<void> {
   return invoke<void>("delete_journal_entry", { id });
 }
+
+// ── Milestones ────────────────────────────────────────────────────────────────
+
+import type { 
+  Milestone, 
+  NewMilestone, 
+  MilestoneTemplate, 
+  NewMilestoneTemplate 
+} from "@/types";
+
+/**
+ * Create a new milestone.
+ */
+export async function createMilestone(payload: NewMilestone): Promise<Milestone> {
+  return invoke<Milestone>("create_milestone", { payload });
+}
+
+/**
+ * Get milestones with optional filters.
+ * @param gameId - Filter by game ID
+ * @param category - Filter by category
+ * @param limit - Maximum number of results
+ */
+export async function getMilestones(
+  gameId?: string | null,
+  category?: string | null,
+  limit?: number | null
+): Promise<Milestone[]> {
+  return invoke<Milestone[]>("get_milestones", {
+    gameId: gameId ?? null,
+    category: category ?? null,
+    limit: limit ?? null,
+  });
+}
+
+/**
+ * Delete a milestone.
+ */
+export async function deleteMilestone(id: string): Promise<void> {
+  return invoke<void>("delete_milestone", { id });
+}
+
+/**
+ * Get milestone templates with optional category filter.
+ */
+export async function getMilestoneTemplates(
+  category?: string | null
+): Promise<MilestoneTemplate[]> {
+  return invoke<MilestoneTemplate[]>("get_milestone_templates", {
+    category: category ?? null,
+  });
+}
+
+/**
+ * Create a new milestone template.
+ */
+export async function createMilestoneTemplate(
+  payload: NewMilestoneTemplate
+): Promise<MilestoneTemplate> {
+  return invoke<MilestoneTemplate>("create_milestone_template", { payload });
+}
+
+/**
+ * Create a milestone from a template.
+ */
+export async function createMilestoneFromTemplate(
+  templateId: string,
+  gameId: string
+): Promise<Milestone> {
+  return invoke<Milestone>("create_milestone_from_template", {
+    templateId,
+    gameId,
+  });
+}
+
+/**
+ * Seed default milestone templates.
+ * Returns the number of templates created.
+ */
+export async function seedDefaultTemplates(): Promise<number> {
+  return invoke<number>("seed_default_templates");
+}

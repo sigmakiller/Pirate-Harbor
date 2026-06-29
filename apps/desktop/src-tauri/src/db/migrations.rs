@@ -6,7 +6,7 @@
 use rusqlite::Connection;
 
 /// All migrations in order. Each is applied sequentially on first run.
-const MIGRATIONS: &[&str] = &[MIGRATION_001, MIGRATION_002, MIGRATION_003, MIGRATION_004, MIGRATION_005];
+const MIGRATIONS: &[&str] = &[MIGRATION_001, MIGRATION_002, MIGRATION_003, MIGRATION_004, MIGRATION_005, MIGRATION_006];
 
 /// 001 — Initial schema: games, sessions, settings + indexes
 const MIGRATION_001: &str = r#"
@@ -124,6 +124,37 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_queue_status ON metadata_enrichment_qu
 ALTER TABLE games ADD COLUMN cover_path_local TEXT;
 ALTER TABLE games ADD COLUMN background_path_local TEXT;
 ALTER TABLE games ADD COLUMN images_enriched_at TEXT;
+"#;
+
+/// 006 — Enhanced milestone system with formal structure and templates
+const MIGRATION_006: &str = r#"
+CREATE TABLE IF NOT EXISTS milestones (
+    id              TEXT PRIMARY KEY,
+    game_id         TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    title           TEXT NOT NULL,
+    description     TEXT,
+    category        TEXT NOT NULL,
+    difficulty      TEXT,
+    achievement_date TEXT NOT NULL,
+    points          INTEGER DEFAULT 0,
+    metadata        TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS milestone_templates (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT,
+    category    TEXT NOT NULL,
+    difficulty  TEXT,
+    is_global   INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_milestones_game ON milestones(game_id);
+CREATE INDEX IF NOT EXISTS idx_milestones_category ON milestones(category);
+CREATE INDEX IF NOT EXISTS idx_milestones_date ON milestones(achievement_date);
 "#;
 
 /// Apply all migrations to the given connection.

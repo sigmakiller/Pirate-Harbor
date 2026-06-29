@@ -61,3 +61,49 @@ export interface Session {
   ended_at:      string | null;
   duration_secs: number;
 }
+
+export type MilestoneCategory = "completion" | "progress" | "exploration" | "mastery" | "social" | "custom";
+export type MilestoneDifficulty = "trivial" | "easy" | "normal" | "hard" | "legendary";
+
+export interface Milestone {
+  id:               string;
+  game_id:          string;
+  title:            string;
+  description:      string | null;
+  category:         MilestoneCategory;
+  difficulty:       MilestoneDifficulty | null;
+  achievement_date: string;
+  points:           number;
+  metadata:         string | null;
+  created_at:       string;
+  updated_at:       string;
+}
+
+export interface NewMilestone {
+  game_id:          string;
+  title:            string;
+  description?:     string | null;
+  category:         MilestoneCategory;
+  difficulty?:      MilestoneDifficulty | null;
+  achievement_date?: string | null;
+  points?:          number;
+  metadata?:        string | null;
+}
+
+export interface MilestoneTemplate {
+  id:          string;
+  title:       string;
+  description: string | null;
+  category:    MilestoneCategory;
+  difficulty:  MilestoneDifficulty | null;
+  is_global:   boolean;
+  created_at:  string;
+}
+
+export interface NewMilestoneTemplate {
+  title:       string;
+  description?: string | null;
+  category:    MilestoneCategory;
+  difficulty?: MilestoneDifficulty | null;
+  is_global:   boolean;
+}
