@@ -21,9 +21,9 @@ import {
 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { getAllGames, getJournalEntries, type JournalEntry } from "@/lib/api";
+import { getAllGames, getJournalEntries, getGamingIdentity, type JournalEntry } from "@/lib/api";
 import { formatPlaytime, formatRelativeDate, STATUS_LABELS } from "@/lib/utils";
-import type { Game, GameStatus } from "@/types";
+import type { Game, GameStatus, GamingIdentity } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -52,13 +52,19 @@ export default function IdentityPage() {
 
   const [games,    setGames]    = useState<Game[]>([]);
   const [entries,  setEntries]  = useState<JournalEntry[]>([]);
+  const [identity, setIdentity] = useState<GamingIdentity | null>(null);
   const [loading,  setLoading]  = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [gs, es] = await Promise.all([getAllGames({}), getJournalEntries(null, 500)]);
+    const [gs, es, id] = await Promise.all([
+      getAllGames({}),
+      getJournalEntries(null, 500),
+      getGamingIdentity().catch(() => null), // Fallback to manual calculation if fails
+    ]);
     setGames(gs);
     setEntries(es);
+    setIdentity(id);
     setLoading(false);
   }, []);
 
@@ -147,6 +153,29 @@ export default function IdentityPage() {
             </div>
           </div>
 
+          {/* Gaming Personality (if available) */}
+          {identity?.gaming_personality && (
+            <div style={styles.personalityBox}>
+              <p style={styles.personalityLabel}>Gaming Personality</p>
+              <p style={styles.personalityType}>
+                {identity.gaming_personality.primary_type}
+                {identity.gaming_personality.secondary_type && (
+                  <span style={styles.personalitySecondary}>
+                    {" / " + identity.gaming_personality.secondary_type}
+                  </span>
+                )}
+              </p>
+              <p style={styles.personalityDesc}>{identity.gaming_personality.description}</p>
+              {identity.gaming_personality.traits.length > 0 && (
+                <div style={styles.traitsList}>
+                  {identity.gaming_personality.traits.slice(0, 4).map(trait => (
+                    <span key={trait} style={styles.traitPill}>{trait}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Stat row */}
           <div style={styles.statRow} role="list" aria-label="Quick stats">
             <StatPill icon={<Gamepad2 size={11} />} label="Games"     value={totalGames}       />
@@ -160,6 +189,21 @@ export default function IdentityPage() {
         <section style={styles.runtimeHero} aria-label="Total runtime">
           <p style={styles.runtimeLabel}>Total Runtime</p>
           <p style={styles.runtimeValue}>{formatPlaytime(totalPlaytime)}</p>
+          
+          {/* Streaks display (if analytics available) */}
+          {identity?.runtime_statistics && (identity.runtime_statistics.streak_current_days > 0 || identity.runtime_statistics.streak_longest_days > 0) && (
+            <div style={styles.streakRow}>
+              <div style={styles.streakBox}>
+                <span style={styles.streakLabel}>Current Streak</span>
+                <span style={styles.streakValue}>{identity.runtime_statistics.streak_current_days} days</span>
+              </div>
+              <div style={styles.streakBox}>
+                <span style={styles.streakLabel}>Longest Streak</span>
+                <span style={styles.streakValue}>{identity.runtime_statistics.streak_longest_days} days</span>
+              </div>
+            </div>
+          )}
+
           <div style={styles.completionRow}>
             <div style={styles.completionBar} role="progressbar"
               aria-valuenow={completionPct} aria-valuemin={0} aria-valuemax={100}
@@ -427,6 +471,54 @@ const styles = {
     display: "flex",
     gap:     8,
   },
+  personalityBox: {
+    padding:       "14px",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    background:    "var(--color-elevated)",
+  },
+  personalityLabel: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      9,
+    letterSpacing: "0.10em",
+    textTransform: "uppercase" as const,
+    color:         "var(--color-text-disabled)",
+    margin:        "0 0 6px",
+  },
+  personalityType: {
+    fontFamily:    "var(--font-display)",
+    fontSize:      16,
+    fontWeight:    700,
+    color:         "var(--color-text-primary)",
+    margin:        "0 0 6px",
+    letterSpacing: "-0.01em",
+  },
+  personalitySecondary: {
+    color:      "var(--color-text-muted)",
+    fontWeight: 500,
+  },
+  personalityDesc: {
+    fontFamily: "var(--font-body)",
+    fontSize:   12,
+    lineHeight: 1.5,
+    color:      "var(--color-text-muted)",
+    margin:     "0 0 10px",
+  },
+  traitsList: {
+    display:  "flex",
+    flexWrap: "wrap" as const,
+    gap:      6,
+  },
+  traitPill: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      9,
+    letterSpacing: "0.08em",
+    color:         "var(--color-text-disabled)",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    padding:       "3px 8px",
+    display:       "inline-block",
+  },
 
   // Runtime hero
   runtimeHero: {
@@ -451,6 +543,35 @@ const styles = {
     color:         "var(--color-text-primary)",
     margin:        "0 0 16px",
     lineHeight:    1.0,
+  },
+  streakRow: {
+    display:      "flex",
+    gap:          8,
+    marginBottom: 16,
+  },
+  streakBox: {
+    flex:          1,
+    padding:       "8px 10px",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    background:    "var(--color-elevated)",
+    display:       "flex",
+    flexDirection: "column" as const,
+    gap:           2,
+  },
+  streakLabel: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      9,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase" as const,
+    color:         "var(--color-text-disabled)",
+  },
+  streakValue: {
+    fontFamily: "var(--font-display)",
+    fontSize:   16,
+    fontWeight: 700,
+    color:      "var(--color-text-secondary)",
+    lineHeight: 1.1,
   },
   completionRow: {
     display:     "flex",
