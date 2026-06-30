@@ -331,7 +331,9 @@ pub fn create_milestone_from_template(
 
 // ── Seed default templates ────────────────────────────────────────────────────
 
-/// Seed default milestone templates
+/// Seed default milestone templates.
+/// Uses deterministic IDs (UUID v5 namespaced by title+category) and
+/// `INSERT OR IGNORE` so this function is safe to call multiple times.
 #[tauri::command]
 pub fn seed_default_templates(db_state: State<'_, DbState>) -> Result<usize, String> {
     let conn = db_state.0.lock().map_err(|e| e.to_string())?;
@@ -362,10 +364,27 @@ pub fn seed_default_templates(db_state: State<'_, DbState>) -> Result<usize, Str
     let mut inserted = 0;
 
     for (title, desc, category, difficulty) in templates {
-        let id = Uuid::new_v4().to_string();
-        
+        // Deterministic ID: hash category+title with std DefaultHasher to derive
+        // a stable pseudo-UUID. Avoids needing the uuid `v5` feature flag.
+        let seed = format!("{}:{}", category, title);
+        let hash = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            seed.hash(&mut h);
+            h.finish()
+        };
+        // Build a deterministic UUID-shaped string from the hash
+        let id = format!(
+            "{:08x}-{:04x}-4{:03x}-{:04x}-{:012x}",
+            (hash >> 32) as u32,
+            ((hash >> 16) & 0xFFFF) as u16,
+            (hash & 0x0FFF) as u16,
+            (((hash >> 48) & 0x3FFF) | 0x8000) as u16,
+            hash & 0x0000_FFFF_FFFF,
+        );
+
         let result = conn.execute(
-            "INSERT INTO milestone_templates
+            "INSERT OR IGNORE INTO milestone_templates
                  (id, title, description, category, difficulty, is_global, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)",
             rusqlite::params![id, title, desc, category, difficulty, now],

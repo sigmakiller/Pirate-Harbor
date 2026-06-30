@@ -106,9 +106,9 @@ export default function LibraryPage() {
     try {
       setEnriching(true);
       await bulkEnrichLibrary();
-      addToast("Library enrichment started", "info");
+      addToast({ message: "Library enrichment started", type: "info" });
     } catch (e) {
-      addToast(`Enrichment failed: ${e}`, "error");
+      addToast({ message: `Enrichment failed: ${e}`, type: "error" });
     } finally {
       setEnriching(false);
     }

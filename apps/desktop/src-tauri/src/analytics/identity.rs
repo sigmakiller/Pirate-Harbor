@@ -3,7 +3,7 @@
 //! Provides comprehensive gaming profile analysis including genre preferences,
 //! session patterns, completion behavior, and gaming personality classification.
 
-use chrono::{DateTime, Utc, Duration};
+use chrono::{NaiveDate, Utc, Duration};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -307,8 +307,19 @@ fn calculate_runtime_stats(conn: &rusqlite::Connection) -> Result<RuntimeStats, 
 
     let average_daily_playtime_secs = playtime_last_30_days_secs as f64 / 30.0;
 
-    // Most active hour (placeholder - requires more complex query)
-    let most_active_hour = None;
+    // Most active hour — hour with most sessions
+    let most_active_hour: Option<i32> = conn
+        .query_row(
+            "SELECT CAST(strftime('%H', started_at) AS INTEGER) as hour, COUNT(*) as cnt
+             FROM sessions
+             WHERE started_at IS NOT NULL
+             GROUP BY hour
+             ORDER BY cnt DESC
+             LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
 
     // Current and longest streak
     let streak_current_days = calculate_current_streak(conn)?;
@@ -328,18 +339,26 @@ fn calculate_runtime_stats(conn: &rusqlite::Connection) -> Result<RuntimeStats, 
     })
 }
 
-/// Calculate current gaming streak (consecutive days with sessions)
+/// Calculate current gaming streak (consecutive days with sessions).
+/// The SQL query returns deduplicated date strings (`YYYY-MM-DD`).
 fn calculate_current_streak(conn: &rusqlite::Connection) -> Result<i64, String> {
     let mut stmt = conn
-        .prepare("SELECT DATE(started_at) as date FROM sessions ORDER BY started_at DESC")
+        .prepare(
+            "SELECT DISTINCT DATE(started_at) as date \
+             FROM sessions \
+             WHERE started_at IS NOT NULL \
+             ORDER BY date DESC",
+        )
         .map_err(|e| e.to_string())?;
 
     let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
-    let mut dates = Vec::new();
+    let mut dates: Vec<NaiveDate> = Vec::new();
 
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-        if let Ok(date) = row.get::<_, String>(0) {
-            dates.push(date);
+        if let Ok(date_str) = row.get::<_, String>(0) {
+            if let Ok(date) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                dates.push(date);
+            }
         }
     }
 
@@ -347,31 +366,65 @@ fn calculate_current_streak(conn: &rusqlite::Connection) -> Result<i64, String> 
         return Ok(0);
     }
 
-    let now = Utc::now();
+    let today = Utc::now().date_naive();
     let mut streak = 0i64;
-    let mut current_date = now.date_naive();
+    let mut expected = today;
 
-    for date_str in &dates {
-        if let Ok(date_time) = DateTime::parse_from_rfc3339(date_str) {
-            let date = date_time.date_naive();
-            let diff = current_date.signed_duration_since(date).num_days();
-
-            if diff <= 1 {
-                streak += 1;
-                current_date = date - Duration::days(1);
-            } else {
-                break;
-            }
+    for date in &dates {
+        let diff = expected.signed_duration_since(*date).num_days();
+        if diff <= 1 {
+            streak += 1;
+            expected = *date - Duration::days(1);
+        } else {
+            break;
         }
     }
 
     Ok(streak)
 }
 
-/// Calculate longest gaming streak in history
+/// Calculate the longest consecutive gaming streak across all history.
 fn calculate_longest_streak(conn: &rusqlite::Connection) -> Result<i64, String> {
-    // Simplified: return current streak for now (full implementation would analyze all dates)
-    calculate_current_streak(conn)
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT DATE(started_at) as date \
+             FROM sessions \
+             WHERE started_at IS NOT NULL \
+             ORDER BY date ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+    let mut dates: Vec<NaiveDate> = Vec::new();
+
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        if let Ok(date_str) = row.get::<_, String>(0) {
+            if let Ok(date) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                dates.push(date);
+            }
+        }
+    }
+
+    if dates.is_empty() {
+        return Ok(0);
+    }
+
+    let mut longest = 1i64;
+    let mut current = 1i64;
+
+    for i in 1..dates.len() {
+        let gap = dates[i].signed_duration_since(dates[i - 1]).num_days();
+        if gap == 1 {
+            current += 1;
+            if current > longest {
+                longest = current;
+            }
+        } else {
+            current = 1;
+        }
+    }
+
+    Ok(longest)
 }
 
 /// Calculate recent gaming journeys (last played games)

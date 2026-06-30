@@ -156,7 +156,9 @@ async fn fetch_from_rawg(
     Ok(results.iter().map(rawg_to_metadata).collect())
 }
 
-/// Fetch metadata from IGDB API (fallback)
+/// Fetch metadata from IGDB API (fallback).
+/// T25: Full IGDB wiring deferred to polish phase.
+#[allow(dead_code)]
 async fn fetch_from_igdb(
     _client_id: &str,
     _access_token: &str,

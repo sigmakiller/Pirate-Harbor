@@ -155,7 +155,9 @@ impl RawgClient {
         }
     }
 
-    /// Get detailed information for a specific game by ID
+    /// Get detailed information for a specific game by ID.
+    /// T25: Not yet called from any command; suppressing warning intentionally.
+    #[allow(dead_code)]
     pub async fn get_game(&self, game_id: i64) -> Result<RawgGame, String> {
         let mut attempts = 0;
 

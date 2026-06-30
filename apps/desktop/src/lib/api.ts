@@ -206,6 +206,16 @@ export async function getRawgApiKey(): Promise<string | null> {
 }
 
 /**
+ * Trigger background enrichment for the entire library.
+ * Fetches metadata and downloads images for all games that haven't
+ * been enriched yet. Runs in the background; progress is emitted
+ * via Tauri events.
+ */
+export async function bulkEnrichLibrary(): Promise<void> {
+  return invoke<void>("bulk_enrich_library");
+}
+
+/**
  * Download and process game images (cover and background).
  * Automatically resizes and converts images to optimal formats.
  * Emits 'image-download-progress' events during processing.
@@ -350,13 +360,23 @@ export async function deleteJournalEntry(id: string): Promise<void> {
 
 // ── Milestones ────────────────────────────────────────────────────────────────
 
-import type { 
-  Milestone, 
-  NewMilestone, 
-  MilestoneTemplate, 
+// Import types for use within this file; also re-export so consumers can
+// import from a single canonical location instead of going to @/types directly.
+import type {
+  Milestone,
+  NewMilestone,
+  MilestoneTemplate,
   NewMilestoneTemplate,
-  MilestoneStatistics 
+  MilestoneStatistics,
 } from "@/types";
+
+export type {
+  Milestone,
+  NewMilestone,
+  MilestoneTemplate,
+  NewMilestoneTemplate,
+  MilestoneStatistics,
+};
 
 /**
  * Create a new milestone.
