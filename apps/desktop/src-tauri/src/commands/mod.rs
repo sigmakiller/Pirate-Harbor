@@ -1,5 +1,6 @@
 pub mod collections;
 pub mod games;
+pub mod identity;
 pub mod journal;
 pub mod launcher;
 pub mod metadata;

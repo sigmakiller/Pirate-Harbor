@@ -4,6 +4,7 @@
 //! and progress tracking.
 
 pub mod milestones;
+pub mod identity;
 
 use serde::{Deserialize, Serialize};
 

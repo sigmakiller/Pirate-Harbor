@@ -89,6 +89,8 @@ pub fn run() {
             commands::milestones::seed_default_templates,
             commands::milestones::get_milestone_statistics,
             commands::milestones::migrate_journal_to_milestones,
+            // ── Identity ──────────────────────────────────────────────────────
+            commands::identity::get_gaming_identity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

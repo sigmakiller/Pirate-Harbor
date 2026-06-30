@@ -130,3 +130,72 @@ export interface MilestoneTimelineEntry {
   count: number;
   category_breakdown: Record<string, number>;
 }
+
+// ── Identity ──────────────────────────────────────────────────────────────────
+
+export interface GamingIdentity {
+  profile_summary: ProfileSummary;
+  favorite_genres: GenrePreference[];
+  runtime_statistics: RuntimeStats;
+  recent_journeys: RecentJourney[];
+  completion_timeline: CompletionEvent[];
+  gaming_personality: GamingPersonality;
+}
+
+export interface ProfileSummary {
+  total_games: number;
+  total_playtime_secs: number;
+  completed_games: number;
+  playing_games: number;
+  favorite_games: number;
+  completion_rate: number;
+  gaming_since: string | null;
+  total_sessions: number;
+  total_milestones: number;
+}
+
+export interface GenrePreference {
+  genre: string;
+  game_count: number;
+  total_playtime_secs: number;
+  milestone_count: number;
+  preference_score: number;
+}
+
+export interface RuntimeStats {
+  total_playtime_secs: number;
+  average_session_secs: number;
+  longest_session_secs: number;
+  total_sessions: number;
+  sessions_last_30_days: number;
+  playtime_last_30_days_secs: number;
+  average_daily_playtime_secs: number;
+  most_active_hour: number | null;
+  streak_current_days: number;
+  streak_longest_days: number;
+}
+
+export interface RecentJourney {
+  game_id: string;
+  game_title: string;
+  last_played: string;
+  total_playtime_secs: number;
+  session_count: number;
+  status: string;
+  progress_indicator: string | null;
+}
+
+export interface CompletionEvent {
+  game_id: string;
+  game_title: string;
+  completed_at: string;
+  total_playtime_secs: number;
+  milestone_count: number;
+}
+
+export interface GamingPersonality {
+  primary_type: string;
+  secondary_type: string | null;
+  traits: string[];
+  description: string;
+}

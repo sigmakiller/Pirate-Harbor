@@ -451,3 +451,13 @@ export async function getMilestoneStatistics(
 export async function migrateJournalToMilestones(): Promise<number> {
   return invoke<number>("migrate_journal_to_milestones");
 }
+
+// ── Identity ──────────────────────────────────────────────────────────────────
+
+/**
+ * Get comprehensive gaming identity profile.
+ * Includes genre preferences, runtime stats, personality analysis, and more.
+ */
+export async function getGamingIdentity(): Promise<import("@/types").GamingIdentity> {
+  return invoke<import("@/types").GamingIdentity>("get_gaming_identity");
+}
