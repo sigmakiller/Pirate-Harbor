@@ -25,8 +25,11 @@ import {
 
 import { GameCard }        from "@/components/GameCard";
 import { GameListRow }     from "@/components/GameListRow";
-import { getAllGames }     from "@/lib/api";
+import { EnrichmentProgressBar } from "@/components/EnrichmentProgressBar";
+import { getAllGames, bulkEnrichLibrary }     from "@/lib/api";
 import { useLibraryStore } from "@/stores/useLibraryStore";
+import { useEnrichmentProgress } from "@/hooks/useEnrichmentProgress";
+import { useToastStore } from "@/stores/useToastStore";
 import type { Game, GameStatus } from "@/types";
 import { useState } from "react";
 
@@ -46,6 +49,11 @@ export default function LibraryPage() {
   const [games,   setGames]   = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
+
+  // ── Enrichment ──────────────────────────────────────────────────────────────
+  const { progress, isActive: enrichmentActive, reset: resetEnrichment } = useEnrichmentProgress();
+  const [enriching, setEnriching] = useState(false);
+  const { addToast } = useToastStore();
 
   // ── UI state — from Zustand store (persists across navigation) ───────────────
   const {
@@ -92,6 +100,19 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(() => { loadGames(); }, [loadGames]);
+
+  // Enrichment handler
+  const handleEnrichLibrary = async () => {
+    try {
+      setEnriching(true);
+      await bulkEnrichLibrary();
+      addToast("Library enrichment started", "info");
+    } catch (e) {
+      addToast(`Enrichment failed: ${e}`, "error");
+    } finally {
+      setEnriching(false);
+    }
+  };
 
   // Game update callback (favorites, etc.)
   const handleGameUpdate = useCallback((updated: Game) => {
@@ -146,6 +167,10 @@ export default function LibraryPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="atlas-enter" style={styles.page}>
+      {/* Progress bar */}
+      {progress && enrichmentActive && (
+        <EnrichmentProgressBar progress={progress} onDismiss={resetEnrichment} />
+      )}
 
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div style={styles.header}>
@@ -158,6 +183,18 @@ export default function LibraryPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={handleEnrichLibrary}
+            disabled={enriching || enrichmentActive}
+            style={{
+              ...styles.enrichBtn,
+              opacity: enriching || enrichmentActive ? 0.5 : 1,
+            }}
+            aria-label="Enrich library with metadata"
+          >
+            <Star size={14} />
+            {enriching ? "Enriching..." : "Enrich Library"}
+          </button>
           <button
             id="scan-folder-btn"
             onClick={() => navigate("/library/scan")}
@@ -420,6 +457,24 @@ const styles = {
     fontSize:      12,
     fontFamily:    "var(--font-body)",
     fontWeight:    600,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+    cursor:        "pointer",
+    borderRadius:  1,
+    transition:    "opacity 150ms",
+    flexShrink:    0,
+  },
+  enrichBtn: {
+    display:       "flex",
+    alignItems:    "center",
+    gap:           6,
+    background:    "none",
+    color:         "var(--color-text-secondary)",
+    border:        "1px solid var(--color-text-secondary)",
+    padding:       "9px 18px",
+    fontSize:      12,
+    fontFamily:    "var(--font-body)",
+    fontWeight:    500,
     letterSpacing: "0.06em",
     textTransform: "uppercase" as const,
     cursor:        "pointer",

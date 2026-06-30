@@ -58,7 +58,7 @@ export default function SettingsPage() {
     // Load RAWG key into local state
     const savedKey = getSetting("rawg_api_key", "");
     if (typeof savedKey === "string") setRawgKey(savedKey);
-  }, [loadSettings]);
+  }, [loadSettings, getSetting]);
 
   const defaultView = (getSetting("default_view", "grid") as ViewMode) ?? "grid";
 
@@ -177,6 +177,38 @@ export default function SettingsPage() {
             >
               List
             </ToggleBtn>
+          </div>
+        </SettingRow>
+      </Section>
+
+      {/* ── Section: Metadata ─────────────────────────────────────────────── */}
+      <Section icon={<Key size={14} />} title="Metadata & Enrichment">
+        <SettingRow
+          label="RAWG API Key"
+          hint="Required for automatic metadata enrichment. Get yours at rawg.io/apidocs"
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="password"
+              value={rawgKey}
+              onChange={(e) => {
+                setRawgKey(e.target.value);
+                setRawgKeySaved(false);
+              }}
+              placeholder="Enter your RAWG API key..."
+              style={styles.input}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setSetting("rawg_api_key", rawgKey);
+                setRawgKeySaved(true);
+                setTimeout(() => setRawgKeySaved(false), 2000);
+              }}
+              style={styles.outlineBtn}
+            >
+              {rawgKeySaved ? <><Check size={12} /> Saved</> : "Save"}
+            </button>
           </div>
         </SettingRow>
       </Section>
@@ -657,6 +689,17 @@ const styles = {
     color:         "var(--color-text-muted)",
     cursor:        "pointer",
     transition:    "border-color 150ms, color 150ms",
+  },
+  input: {
+    background:   "var(--color-surface)",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    padding:      "8px 12px",
+    fontSize:     12,
+    fontFamily:   "var(--font-mono)",
+    color:        "var(--color-text-primary)",
+    minWidth:     280,
+    outline:      "none",
   },
   dirList: {
     display:       "flex",
