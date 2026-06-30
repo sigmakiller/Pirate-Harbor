@@ -9,6 +9,7 @@ pub mod identity;
 use serde::{Deserialize, Serialize};
 
 /// Generic timeline entry for trend analysis
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineEntry {
     pub date: String,
@@ -16,6 +17,7 @@ pub struct TimelineEntry {
 }
 
 /// Generic distribution entry
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistributionEntry {
     pub label: String,

@@ -119,12 +119,16 @@ CREATE TABLE IF NOT EXISTS metadata_enrichment_queue (
 
 CREATE INDEX IF NOT EXISTS idx_metadata_cache_title ON metadata_cache(game_title);
 CREATE INDEX IF NOT EXISTS idx_enrichment_queue_status ON metadata_enrichment_queue(status);
-
--- Image tracking columns for local storage
-ALTER TABLE games ADD COLUMN cover_path_local TEXT;
-ALTER TABLE games ADD COLUMN background_path_local TEXT;
-ALTER TABLE games ADD COLUMN images_enriched_at TEXT;
 "#;
+
+/// Image columns added to `games` by MIGRATION_005.
+/// Kept separate so they can be applied with `ALTER TABLE … ADD COLUMN IF NOT EXISTS`
+/// semantics — SQLite doesn't support that natively, so we ignore duplicate-column errors.
+const MIGRATION_005_ALTER: &[(&str, &str, &str)] = &[
+    ("games", "cover_path_local",       "TEXT"),
+    ("games", "background_path_local",  "TEXT"),
+    ("games", "images_enriched_at",     "TEXT"),
+];
 
 /// 006 — Enhanced milestone system with formal structure and templates
 const MIGRATION_006: &str = r#"
@@ -158,10 +162,22 @@ CREATE INDEX IF NOT EXISTS idx_milestones_date ON milestones(achievement_date);
 "#;
 
 /// Apply all migrations to the given connection.
+/// `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` are inherently
+/// idempotent. `ALTER TABLE ADD COLUMN` is not, so we handle it separately:
+/// any "duplicate column" error is silently ignored.
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     for migration in MIGRATIONS {
         conn.execute_batch(migration)?;
     }
+
+    // Apply MIGRATION_005 ALTER TABLE columns individually so they are
+    // safe to re-run on a persisted database where columns already exist.
+    for (table, column, col_type) in MIGRATION_005_ALTER {
+        let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, col_type);
+        // Ignore error code 1 (SQLITE_ERROR) which covers "duplicate column name"
+        let _ = conn.execute_batch(&sql);
+    }
+
     Ok(())
 }
 

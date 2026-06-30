@@ -2,6 +2,10 @@
 //!
 //! Handles downloading, resizing, and storing game cover art and backgrounds
 //! from metadata API URLs.
+//!
+//! T25: Some image utilities (batch download, thumbnail) deferred to polish phase.
+#![allow(dead_code)]
+
 
 pub mod downloader;
 pub mod processor;

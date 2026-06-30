@@ -1,6 +1,10 @@
 //! Milestone analytics and statistics — T22.
 //!
 //! Provides comprehensive statistics and trend analysis for milestone data.
+//!
+//! T25: Timeline and distribution analytics deferred to polish phase.
+#![allow(dead_code)]
+
 
 use chrono::{DateTime, Utc, Duration};
 use serde::{Deserialize, Serialize};

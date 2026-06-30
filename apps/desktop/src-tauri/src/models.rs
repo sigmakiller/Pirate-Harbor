@@ -137,6 +137,9 @@ pub struct ScanResult {
 // ── Metadata ──────────────────────────────────────────────────────────────────
 
 /// A game metadata result returned from the RAWG API search.
+/// T25: This model is superseded by MetadataSearchResult in commands/metadata.rs;
+/// retained here for future type consolidation.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetadataResult {
     /// Canonical game title

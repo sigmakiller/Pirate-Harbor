@@ -5,6 +5,9 @@
 //!
 //! Note: IGDB requires Twitch authentication. This is a simplified
 //! implementation — full OAuth flow should be added in production.
+//!
+//! T25: Full IGDB integration and wiring deferred to polish phase.
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
