@@ -1,5 +1,6 @@
 mod analytics;
 mod api;
+mod assets;
 mod background;
 mod commands;
 mod db;
@@ -10,6 +11,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
+use assets::AssetManager;
 use background::JobScheduler;
 use commands::launcher::LauncherState;
 use db::DbState;
@@ -33,6 +35,11 @@ pub fn run() {
 
             // ── Launcher state ────────────────────────────────────────────────
             app.manage(LauncherState(Mutex::new(None)));
+
+            // ── Asset manager ─────────────────────────────────────────────────
+            let asset_manager = AssetManager::new(&app_data_dir)
+                .expect("Failed to initialize asset manager");
+            app.manage(asset_manager);
 
             // ── Background job scheduler ───────────────────────────────────────
             let scheduler = JobScheduler::new();
@@ -113,6 +120,18 @@ pub fn run() {
             commands::background::list_active_jobs,
             commands::background::list_all_jobs,
             commands::background::queue_depth,
+            // ── Assets (T28) ──────────────────────────────────────────────────
+            commands::assets::store_cover,
+            commands::assets::store_background,
+            commands::assets::get_cover_path,
+            commands::assets::delete_cover,
+            commands::assets::store_gallery_image,
+            commands::assets::get_gallery_images,
+            commands::assets::delete_gallery_image,
+            commands::assets::delete_game_gallery,
+            commands::assets::get_storage_stats,
+            commands::assets::cleanup_orphan_assets,
+            commands::assets::check_duplicate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

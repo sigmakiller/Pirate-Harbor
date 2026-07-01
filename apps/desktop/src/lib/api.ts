@@ -523,3 +523,82 @@ export async function listAllJobs(): Promise<JobInfo[]> {
 export async function queueDepth(): Promise<number> {
   return invoke<number>("queue_depth");
 }
+
+// ── Asset Management (T28) ────────────────────────────────────────────────────
+
+export type AssetType = "cover" | "background" | "gallery" | "thumbnail";
+
+export interface AssetRef {
+  path: string;
+  asset_type: AssetType;
+  content_hash: string;
+}
+
+export interface StorageStats {
+  total_bytes: number;
+  covers_bytes: number;
+  backgrounds_bytes: number;
+  gallery_bytes: number;
+  thumbnails_bytes: number;
+  file_count: number;
+}
+
+export interface CleanupResult {
+  deleted_count: number;
+  bytes_freed: number;
+}
+
+/** Store a cover image (resized to 512×512 WebP). Returns AssetRef. */
+export async function storeCover(gameId: string, sourcePath: string): Promise<AssetRef> {
+  return invoke<AssetRef>("store_cover", { gameId, sourcePath });
+}
+
+/** Store a background image (resized to 1920×1080 WebP). Returns AssetRef. */
+export async function storeBackground(gameId: string, sourcePath: string): Promise<AssetRef> {
+  return invoke<AssetRef>("store_background", { gameId, sourcePath });
+}
+
+/** Get the local cover path for a game, or null if none stored. */
+export async function getCoverPath(gameId: string): Promise<string | null> {
+  return invoke<string | null>("get_cover_path", { gameId });
+}
+
+/** Delete the cover image for a game. */
+export async function deleteCover(gameId: string): Promise<void> {
+  return invoke<void>("delete_cover", { gameId });
+}
+
+/** Store a gallery image for a game (converted to WebP, no resize). */
+export async function storeGalleryImage(gameId: string, sourcePath: string): Promise<AssetRef> {
+  return invoke<AssetRef>("store_gallery_image", { gameId, sourcePath });
+}
+
+/** List all gallery images for a game. */
+export async function getGalleryImages(gameId: string): Promise<AssetRef[]> {
+  return invoke<AssetRef[]>("get_gallery_images", { gameId });
+}
+
+/** Delete a single gallery image by path. */
+export async function deleteGalleryImage(path: string): Promise<void> {
+  return invoke<void>("delete_gallery_image", { path });
+}
+
+/** Delete all gallery images for a game. Returns count deleted. */
+export async function deleteGameGallery(gameId: string): Promise<number> {
+  return invoke<number>("delete_game_gallery", { gameId });
+}
+
+/** Get disk usage statistics for all asset directories. */
+export async function getStorageStats(): Promise<StorageStats> {
+  return invoke<StorageStats>("get_storage_stats");
+}
+
+/** Delete orphaned asset files (games no longer in DB). */
+export async function cleanupOrphanAssets(): Promise<CleanupResult> {
+  return invoke<CleanupResult>("cleanup_orphan_assets");
+}
+
+/** Check if a file's content is already stored (dedup check). */
+export async function checkDuplicate(sourcePath: string): Promise<AssetRef | null> {
+  return invoke<AssetRef | null>("check_duplicate", { sourcePath });
+}
