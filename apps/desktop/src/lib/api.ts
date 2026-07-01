@@ -481,3 +481,45 @@ export async function migrateJournalToMilestones(): Promise<number> {
 export async function getGamingIdentity(): Promise<import("@/types").GamingIdentity> {
   return invoke<import("@/types").GamingIdentity>("get_gaming_identity");
 }
+
+// ── Background Jobs (T27) ─────────────────────────────────────────────────────
+
+import type { JobInfo } from "@/hooks/useJobProgress";
+
+/**
+ * Get the status snapshot for a single background job.
+ * Returns null if the job ID is unknown or has been pruned from history.
+ */
+export async function getJobStatus(jobId: string): Promise<JobInfo | null> {
+  return invoke<JobInfo | null>("get_job_status", { jobId });
+}
+
+/**
+ * Attempt to cancel a queued job before it starts.
+ * Returns true if the job was found and removed; false if it was already
+ * running, finished, or unknown.
+ */
+export async function cancelJob(jobId: string): Promise<boolean> {
+  return invoke<boolean>("cancel_job", { jobId });
+}
+
+/**
+ * Return all currently queued or running jobs.
+ */
+export async function listActiveJobs(): Promise<JobInfo[]> {
+  return invoke<JobInfo[]>("list_active_jobs");
+}
+
+/**
+ * Return all jobs including recently finished ones (last 20).
+ */
+export async function listAllJobs(): Promise<JobInfo[]> {
+  return invoke<JobInfo[]>("list_all_jobs");
+}
+
+/**
+ * Return the number of jobs currently waiting in the queue.
+ */
+export async function queueDepth(): Promise<number> {
+  return invoke<number>("queue_depth");
+}
