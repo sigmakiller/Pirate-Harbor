@@ -6,6 +6,12 @@
 
 pub mod migrations;
 
+// Re-export version helpers so commands can use `crate::db::get_schema_version`
+// without coupling to the internal `migrations` sub-module.
+// T35: Used by the diagnostics command; suppressing "unused" until then.
+#[allow(unused_imports)]
+pub use migrations::{get_schema_version, set_schema_version, CURRENT_SCHEMA_VERSION};
+
 use std::sync::Mutex;
 
 use rusqlite::Connection;
