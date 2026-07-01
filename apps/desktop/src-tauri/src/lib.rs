@@ -1,5 +1,6 @@
 mod analytics;
 mod api;
+mod background;
 mod commands;
 mod db;
 mod images;
@@ -9,6 +10,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
+use background::JobScheduler;
 use commands::launcher::LauncherState;
 use db::DbState;
 
@@ -31,6 +33,20 @@ pub fn run() {
 
             // ── Launcher state ────────────────────────────────────────────────
             app.manage(LauncherState(Mutex::new(None)));
+
+            // ── Background job scheduler ───────────────────────────────────────
+            let scheduler = JobScheduler::new();
+            app.manage(scheduler.clone());
+
+            // Determine the DB path so the worker can open its own connection.
+            let db_path = app_data_dir.join("pirate_harbor.db");
+
+            // Start the worker loop — runs for the lifetime of the app.
+            background::start_worker(
+                scheduler.state.clone(),
+                db_path,
+                app.handle().clone(),
+            );
 
             Ok(())
         })
@@ -91,6 +107,12 @@ pub fn run() {
             commands::milestones::migrate_journal_to_milestones,
             // ── Identity ──────────────────────────────────────────────────────
             commands::identity::get_gaming_identity,
+            // ── Background jobs ───────────────────────────────────────────────
+            commands::background::get_job_status,
+            commands::background::cancel_job,
+            commands::background::list_active_jobs,
+            commands::background::list_all_jobs,
+            commands::background::queue_depth,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

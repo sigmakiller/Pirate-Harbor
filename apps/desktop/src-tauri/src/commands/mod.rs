@@ -1,3 +1,4 @@
+pub mod background;
 pub mod collections;
 pub mod games;
 pub mod identity;
