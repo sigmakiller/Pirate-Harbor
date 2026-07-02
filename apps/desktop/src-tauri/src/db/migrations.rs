@@ -19,7 +19,9 @@ use rusqlite::Connection;
 
 /// Current target schema version.
 /// Increment this whenever a new MIGRATION_NNN is added.
-pub const CURRENT_SCHEMA_VERSION: i32 = 6;
+// T35: Consumed by the diagnostics command via `db::CURRENT_SCHEMA_VERSION`.
+#[allow(dead_code)]
+pub const CURRENT_SCHEMA_VERSION: i32 = 7;
 
 // ── Versioned migration table ─────────────────────────────────────────────────
 
@@ -41,6 +43,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 4, description: "Journal",        sql: MIGRATION_004 },
     Migration { version: 5, description: "Metadata cache", sql: MIGRATION_005 },
     Migration { version: 6, description: "Milestones",     sql: MIGRATION_006 },
+    Migration { version: 7, description: "FTS5 search",    sql: MIGRATION_007 },
 ];
 
 // ── SQL strings ───────────────────────────────────────────────────────────────
@@ -198,6 +201,66 @@ CREATE INDEX IF NOT EXISTS idx_milestones_category ON milestones(category);
 CREATE INDEX IF NOT EXISTS idx_milestones_date ON milestones(achievement_date);
 "#;
 
+/// 007 — FTS5 full-text search virtual tables for games and journal entries.
+///
+/// Content tables mode: the FTS index is a shadow of the real tables.
+/// Triggers keep the FTS in sync on every INSERT/UPDATE/DELETE.
+/// `content_rowid='rowid'` ensures rowid lookups work correctly.
+const MIGRATION_007: &str = r#"
+-- ── FTS5 virtual tables ───────────────────────────────────────────────────────────────
+CREATE VIRTUAL TABLE IF NOT EXISTS games_fts USING fts5(
+    title, developer, publisher, genre,
+    content='games', content_rowid='rowid'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS journal_fts USING fts5(
+    title, body,
+    content='journal_entries', content_rowid='rowid'
+);
+
+-- ── games sync triggers ──────────────────────────────────────────────────────────────
+CREATE TRIGGER IF NOT EXISTS games_ai
+AFTER INSERT ON games BEGIN
+    INSERT INTO games_fts(rowid, title, developer, publisher, genre)
+    VALUES (new.rowid, new.title, new.developer, new.publisher, new.genre);
+END;
+
+CREATE TRIGGER IF NOT EXISTS games_ad
+AFTER DELETE ON games BEGIN
+    INSERT INTO games_fts(games_fts, rowid, title, developer, publisher, genre)
+    VALUES ('delete', old.rowid, old.title, old.developer, old.publisher, old.genre);
+END;
+
+CREATE TRIGGER IF NOT EXISTS games_au
+AFTER UPDATE ON games BEGIN
+    INSERT INTO games_fts(games_fts, rowid, title, developer, publisher, genre)
+    VALUES ('delete', old.rowid, old.title, old.developer, old.publisher, old.genre);
+    INSERT INTO games_fts(rowid, title, developer, publisher, genre)
+    VALUES (new.rowid, new.title, new.developer, new.publisher, new.genre);
+END;
+
+-- ── journal_entries sync triggers ─────────────────────────────────────────────────
+CREATE TRIGGER IF NOT EXISTS journal_ai
+AFTER INSERT ON journal_entries BEGIN
+    INSERT INTO journal_fts(rowid, title, body)
+    VALUES (new.rowid, new.title, new.body);
+END;
+
+CREATE TRIGGER IF NOT EXISTS journal_ad
+AFTER DELETE ON journal_entries BEGIN
+    INSERT INTO journal_fts(journal_fts, rowid, title, body)
+    VALUES ('delete', old.rowid, old.title, old.body);
+END;
+
+CREATE TRIGGER IF NOT EXISTS journal_au
+AFTER UPDATE ON journal_entries BEGIN
+    INSERT INTO journal_fts(journal_fts, rowid, title, body)
+    VALUES ('delete', old.rowid, old.title, old.body);
+    INSERT INTO journal_fts(rowid, title, body)
+    VALUES (new.rowid, new.title, new.body);
+END;
+"#;
+
 // ── Version helpers ───────────────────────────────────────────────────────────
 
 /// Read the current schema version from the `settings` table.
@@ -238,8 +301,9 @@ fn auto_detect_existing_schema(conn: &Connection) -> Result<(), rusqlite::Error>
 
     if milestones_exists {
         // All 6 migrations were already applied without version tracking.
-        // Stamp the version so subsequent runs are fully skipped.
-        set_schema_version(conn, CURRENT_SCHEMA_VERSION)?;
+        // T29: We stamp to 6 (not 7) because games_fts may not yet exist.
+        // The next run_migrations call will apply migration 007.
+        set_schema_version(conn, 6)?;
     }
 
     Ok(())
@@ -323,6 +387,12 @@ mod tests {
         assert!(tables.contains(&"journal_entries".to_string()));
         assert!(tables.contains(&"milestones".to_string()));
         assert!(tables.contains(&"milestone_templates".to_string()));
+
+        // T29: FTS5 virtual tables must exist.
+        assert!(tables.contains(&"games_fts".to_string()),
+            "games_fts virtual table missing");
+        assert!(tables.contains(&"journal_fts".to_string()),
+            "journal_fts virtual table missing");
     }
 
     #[test]
@@ -344,6 +414,82 @@ mod tests {
 
         // Version must still be correct after double-run.
         assert_eq!(get_schema_version(&conn), CURRENT_SCHEMA_VERSION);
+    }
+
+    /// T29: Verify FTS5 search actually finds records via MATCH syntax.
+    #[test]
+    fn test_fts_search_works() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Enable WAL + FK (mirrors db/mod.rs).
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;").unwrap();
+
+        // Insert a game — triggers games_ai should populate games_fts.
+        conn.execute(
+            "INSERT INTO games (id, title, exe_path, is_favorite, added_at, total_playtime_secs, launch_count, status)
+             VALUES ('g1', 'The Witcher 3', '/path/witcher.exe', 0, '2024-01-01T00:00:00Z', 0, 0, 'unplayed')",
+            [],
+        ).unwrap();
+
+        // FTS search by partial title (prefix query).
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM games_fts WHERE games_fts MATCH 'Witcher*'",
+            [],
+            |row| row.get(0),
+        ).expect("FTS5 MATCH query failed");
+        assert_eq!(count, 1, "Should find 1 game matching 'Witcher*'");
+
+        // FTS search by developer (after UPDATE triggers games_au).
+        conn.execute(
+            "UPDATE games SET developer = 'CD Projekt Red' WHERE id = 'g1'",
+            [],
+        ).unwrap();
+
+        let dev_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM games_fts WHERE games_fts MATCH 'Projekt*'",
+            [],
+            |row| row.get(0),
+        ).expect("FTS5 developer MATCH failed");
+        assert_eq!(dev_count, 1, "Should find 1 game matching developer 'Projekt*'");
+
+        // Verify DELETE trigger removes from FTS.
+        conn.execute("DELETE FROM games WHERE id = 'g1'", []).unwrap();
+        let after_delete: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM games_fts WHERE games_fts MATCH 'Witcher*'",
+            [],
+            |row| row.get(0),
+        ).expect("FTS5 MATCH after delete failed");
+        assert_eq!(after_delete, 0, "Deleted game should not appear in FTS");
+    }
+
+    /// T29: Journal FTS5 search.
+    #[test]
+    fn test_journal_fts_search_works() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO journal_entries (id, title, body, entry_type, created_at, updated_at)
+             VALUES ('j1', 'Epic Victory', 'I defeated the final boss in Elden Ring!', 'note', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
+            [],
+        ).unwrap();
+
+        // Search title.
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM journal_fts WHERE journal_fts MATCH 'Victory*'",
+            [],
+            |row| row.get(0),
+        ).expect("Journal FTS MATCH failed");
+        assert_eq!(count, 1, "Should find 1 entry matching 'Victory*'");
+
+        // Search body.
+        let body_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM journal_fts WHERE journal_fts MATCH 'Elden*'",
+            [],
+            |row| row.get(0),
+        ).expect("Journal body FTS MATCH failed");
+        assert_eq!(body_count, 1, "Should find 1 entry matching body 'Elden*'");
     }
 
     #[test]

@@ -132,6 +132,9 @@ pub fn run() {
             commands::assets::get_storage_stats,
             commands::assets::cleanup_orphan_assets,
             commands::assets::check_duplicate,
+            // ── Search / FTS5 (T29) ───────────────────────────────────────────
+            commands::search::search_global,
+            commands::search::rebuild_search_index,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

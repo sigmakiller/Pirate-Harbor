@@ -602,3 +602,54 @@ export async function cleanupOrphanAssets(): Promise<CleanupResult> {
 export async function checkDuplicate(sourcePath: string): Promise<AssetRef | null> {
   return invoke<AssetRef | null>("check_duplicate", { sourcePath });
 }
+
+// -- Search / FTS5 (T29) -------------------------------------------------------
+
+export interface GameSearchHit {
+  id: string;
+  title: string;
+  developer: string | null;
+  genre: string | null;
+  status: string;
+  cover_path: string | null;
+}
+
+export interface JournalSearchHit {
+  id: string;
+  title: string | null;
+  body: string;
+  entry_type: string;
+  game_id: string | null;
+  game_title: string | null;
+  created_at: string;
+}
+
+export interface MilestoneSearchHit {
+  id: string;
+  title: string;
+  game_id: string;
+  game_title: string | null;
+  category: string;
+}
+
+export interface SearchResults {
+  games: GameSearchHit[];
+  journal_entries: JournalSearchHit[];
+  milestones: MilestoneSearchHit[];
+  total: number;
+}
+
+export interface RebuildResult {
+  games_indexed: number;
+  journal_indexed: number;
+}
+
+/** Global FTS5 search across games, journal entries, and milestones. */
+export async function searchGlobal(query: string, limit?: number): Promise<SearchResults> {
+  return invoke<SearchResults>("search_global", { query, limit });
+}
+
+/** Rebuild the FTS5 search indexes from scratch. */
+export async function rebuildSearchIndex(): Promise<RebuildResult> {
+  return invoke<RebuildResult>("rebuild_search_index");
+}
