@@ -135,6 +135,9 @@ pub fn run() {
             // ── Search / FTS5 (T29) ───────────────────────────────────────────
             commands::search::search_global,
             commands::search::rebuild_search_index,
+            // ── Recommendations (T31) ─────────────────────────────────────────
+            commands::recommendations::get_recommendations,
+            commands::recommendations::get_game_recommendations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

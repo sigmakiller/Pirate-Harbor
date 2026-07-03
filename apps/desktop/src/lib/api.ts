@@ -653,3 +653,38 @@ export async function searchGlobal(query: string, limit?: number): Promise<Searc
 export async function rebuildSearchIndex(): Promise<RebuildResult> {
   return invoke<RebuildResult>("rebuild_search_index");
 }
+
+// -- Recommendations (T31) -----------------------------------------------------
+
+export interface StrategyContribution {
+  strategy: string;
+  score: number;
+  weight: number;
+}
+
+export interface RecommendationResult {
+  game_id: string;
+  title: string;
+  cover_path: string | null;
+  genre: string | null;
+  developer: string | null;
+  status: string;
+  /** Composite score 0.0–1.0 across all strategies. */
+  score: number;
+  /** Human-readable reason for the recommendation. */
+  reason: string;
+  strategy_contributions: StrategyContribution[];
+}
+
+/** Get top recommended unplayed games from the library. */
+export async function getRecommendations(limit?: number): Promise<RecommendationResult[]> {
+  return invoke<RecommendationResult[]>("get_recommendations", { limit });
+}
+
+/** Get games related to a specific game by genre/developer. */
+export async function getGameRecommendations(
+  gameId: string,
+  limit?: number,
+): Promise<RecommendationResult[]> {
+  return invoke<RecommendationResult[]>("get_game_recommendations", { gameId, limit });
+}
