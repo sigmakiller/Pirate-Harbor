@@ -5,6 +5,7 @@ mod background;
 mod commands;
 mod db;
 mod images;
+mod metadata;
 mod models;
 
 use std::sync::Mutex;
@@ -138,6 +139,15 @@ pub fn run() {
             // ── Recommendations (T31) ─────────────────────────────────────────
             commands::recommendations::get_recommendations,
             commands::recommendations::get_game_recommendations,
+            // ── Analytics engines (T30) ───────────────────────────────────────
+            commands::analytics::get_library_summary,
+            commands::analytics::get_most_played_games,
+            commands::analytics::get_playtime_trend,
+            commands::analytics::get_activity_heatmap,
+            commands::analytics::get_genre_distribution,
+            commands::analytics::get_completion_stats,
+            commands::analytics::get_year_in_review,
+            commands::analytics::get_related_games,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

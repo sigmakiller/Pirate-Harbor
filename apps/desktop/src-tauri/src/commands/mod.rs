@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod assets;
 pub mod background;
 pub mod collections;
