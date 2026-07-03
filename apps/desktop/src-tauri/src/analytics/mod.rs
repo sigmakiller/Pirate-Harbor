@@ -7,6 +7,13 @@ pub mod milestones;
 pub mod identity;
 pub mod recommendations;
 
+// ── T30 shared engines ────────────────────────────────────────────────────────
+pub mod gaming_stats;
+pub mod genre_stats;
+pub mod completion_stats;
+pub mod heatmap;
+pub mod year_in_review;
+
 use serde::{Deserialize, Serialize};
 
 /// Generic timeline entry for trend analysis

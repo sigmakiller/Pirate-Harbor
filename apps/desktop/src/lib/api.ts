@@ -688,3 +688,146 @@ export async function getGameRecommendations(
 ): Promise<RecommendationResult[]> {
   return invoke<RecommendationResult[]>("get_game_recommendations", { gameId, limit });
 }
+
+// -- Analytics engines (T30) ---------------------------------------------------
+
+export interface GamePlaytime {
+  game_id: string;
+  title: string;
+  total_playtime_secs: number;
+  cover_path: string | null;
+  status: string;
+}
+
+export interface DailyPlaytime {
+  date: string;         // YYYY-MM-DD
+  playtime_secs: number;
+}
+
+export interface HeatmapCell {
+  day_of_week: number;  // 0=Sun … 6=Sat
+  hour: number;         // 0–23
+  sessions: number;
+}
+
+export interface ActivityHeatmap {
+  cells: HeatmapCell[];
+  most_active_day: number | null;
+  most_active_hour: number | null;
+  total_sessions: number;
+}
+
+export interface LibrarySummary {
+  total_games: number;
+  total_playtime_secs: number;
+  completed_games: number;
+  playing_games: number;
+  unplayed_games: number;
+  dropped_games: number;
+  favorite_games: number;
+  total_sessions: number;
+  total_milestones: number;
+  average_session_secs: number;
+}
+
+export interface GenreStat {
+  genre: string;
+  game_count: number;
+  completed_count: number;
+  total_playtime_secs: number;
+  milestone_count: number;
+  preference_score: number;
+}
+
+export interface GenreDistribution {
+  genres: GenreStat[];
+  total_playtime_secs: number;
+  dominant_genre: string | null;
+}
+
+export interface YearlyCompletions {
+  year: string;
+  count: number;
+}
+
+export interface CompletionStats {
+  total_games: number;
+  completed: number;
+  playing: number;
+  unplayed: number;
+  dropped: number;
+  completion_rate: number;
+  completions_by_year: YearlyCompletions[];
+  avg_time_to_complete_secs: number;
+}
+
+export interface YearInReview {
+  year: string;
+  total_playtime_secs: number;
+  games_played: number;
+  games_completed: number;
+  games_added: number;
+  sessions: number;
+  top_games: GamePlaytime[];
+  top_genres: GenreStat[];
+  most_active_month: number | null;
+  longest_session_secs: number;
+  completion_rate: number;
+}
+
+export type RelationKind =
+  | 'same_genre'
+  | 'same_developer'
+  | 'same_publisher'
+  | 'genre_and_developer';
+
+export interface RelatedGame {
+  id: string;
+  title: string;
+  cover_path: string | null;
+  genre: string | null;
+  developer: string | null;
+  status: string;
+  total_playtime_secs: number;
+  relation: RelationKind;
+}
+
+/** One-stop dashboard summary. */
+export async function getLibrarySummary(): Promise<LibrarySummary> {
+  return invoke<LibrarySummary>("get_library_summary");
+}
+
+/** Top N games by playtime. */
+export async function getMostPlayedGames(limit?: number): Promise<GamePlaytime[]> {
+  return invoke<GamePlaytime[]>("get_most_played_games", { limit });
+}
+
+/** Daily playtime trend — last N days (default 30). */
+export async function getPlaytimeTrend(days?: number): Promise<DailyPlaytime[]> {
+  return invoke<DailyPlaytime[]>("get_playtime_trend", { days });
+}
+
+/** 7×24 activity heatmap (all 168 cells, zeros included). */
+export async function getActivityHeatmap(): Promise<ActivityHeatmap> {
+  return invoke<ActivityHeatmap>("get_activity_heatmap");
+}
+
+/** Genre distribution ordered by preference score. */
+export async function getGenreDistribution(): Promise<GenreDistribution> {
+  return invoke<GenreDistribution>("get_genre_distribution");
+}
+
+/** Library completion statistics. */
+export async function getCompletionStats(): Promise<CompletionStats> {
+  return invoke<CompletionStats>("get_completion_stats");
+}
+
+/** Year-in-Review for a given year (defaults to current year). */
+export async function getYearInReview(year?: number): Promise<YearInReview> {
+  return invoke<YearInReview>("get_year_in_review", { year });
+}
+
+/** Related games by genre/developer for Game Detail page. */
+export async function getRelatedGames(gameId: string, limit?: number): Promise<RelatedGame[]> {
+  return invoke<RelatedGame[]>("get_related_games", { gameId, limit });
+}
