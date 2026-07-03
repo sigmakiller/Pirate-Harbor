@@ -5,6 +5,7 @@
 
 pub mod milestones;
 pub mod identity;
+pub mod recommendations;
 
 use serde::{Deserialize, Serialize};
 

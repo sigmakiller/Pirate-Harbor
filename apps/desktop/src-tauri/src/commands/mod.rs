@@ -7,6 +7,7 @@ pub mod journal;
 pub mod launcher;
 pub mod metadata;
 pub mod milestones;
+pub mod recommendations;
 pub mod scanner;
 pub mod search;
 pub mod sessions;
