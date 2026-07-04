@@ -89,27 +89,32 @@ pub fn build_user_context(conn: &Connection) -> Result<UserContext, String> {
     // Gather genre playtime.
     let mut genre_playtime: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
 
+    // Fetch per-game genre + playtime so we can split comma-separated genres
+    // in Rust.  GROUP BY genre would treat "Action, RPG" as a single opaque key.
     let mut stmt = conn
         .prepare(
-            "SELECT genre, SUM(total_playtime_secs) as pt
+            "SELECT genre, total_playtime_secs
              FROM games
-             WHERE genre IS NOT NULL AND total_playtime_secs > 0
-             GROUP BY genre
-             ORDER BY pt DESC",
+             WHERE genre IS NOT NULL AND total_playtime_secs > 0",
         )
         .map_err(|e| e.to_string())?;
 
-    let rows = stmt
+    let rows: Vec<(String, i64)> = stmt
         .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, i64>(1)?,
             ))
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
 
-    for row in rows.flatten() {
-        genre_playtime.insert(row.0, row.1);
+    for (genre_str, pt) in rows {
+        // Split "Action, RPG" → ["Action", "RPG"], add playtime to each.
+        for g in genre_str.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            *genre_playtime.entry(g.to_string()).or_insert(0) += pt;
+        }
     }
 
     let total_playtime: i64 = conn
@@ -152,8 +157,9 @@ pub fn build_user_context(conn: &Connection) -> Result<UserContext, String> {
 pub(crate) fn fetch_candidates(conn: &Connection) -> Result<Vec<Candidate>, String> {
     let mut stmt = conn
         .prepare(
-            r#"SELECT id, title, cover_path_local, genre, developer, publisher,
-                      status, total_playtime_secs, added_at, launch_count
+            r#"SELECT id, title, COALESCE(cover_path_local, cover_path), genre,
+                      developer, publisher, status, total_playtime_secs, added_at,
+                      launch_count
                FROM games
                WHERE status = 'unplayed' OR (status = 'playing' AND total_playtime_secs = 0)
                ORDER BY added_at DESC"#,

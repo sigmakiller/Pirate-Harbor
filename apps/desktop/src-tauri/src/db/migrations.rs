@@ -222,21 +222,25 @@ CREATE VIRTUAL TABLE IF NOT EXISTS journal_fts USING fts5(
 CREATE TRIGGER IF NOT EXISTS games_ai
 AFTER INSERT ON games BEGIN
     INSERT INTO games_fts(rowid, title, developer, publisher, genre)
-    VALUES (new.rowid, new.title, new.developer, new.publisher, new.genre);
+    VALUES (new.rowid, new.title, new.developer, new.publisher,
+            REPLACE(COALESCE(new.genre, ''), ',', ' '));
 END;
 
 CREATE TRIGGER IF NOT EXISTS games_ad
 AFTER DELETE ON games BEGIN
     INSERT INTO games_fts(games_fts, rowid, title, developer, publisher, genre)
-    VALUES ('delete', old.rowid, old.title, old.developer, old.publisher, old.genre);
+    VALUES ('delete', old.rowid, old.title, old.developer, old.publisher,
+            REPLACE(COALESCE(old.genre, ''), ',', ' '));
 END;
 
 CREATE TRIGGER IF NOT EXISTS games_au
 AFTER UPDATE ON games BEGIN
     INSERT INTO games_fts(games_fts, rowid, title, developer, publisher, genre)
-    VALUES ('delete', old.rowid, old.title, old.developer, old.publisher, old.genre);
+    VALUES ('delete', old.rowid, old.title, old.developer, old.publisher,
+            REPLACE(COALESCE(old.genre, ''), ',', ' '));
     INSERT INTO games_fts(rowid, title, developer, publisher, genre)
-    VALUES (new.rowid, new.title, new.developer, new.publisher, new.genre);
+    VALUES (new.rowid, new.title, new.developer, new.publisher,
+            REPLACE(COALESCE(new.genre, ''), ',', ' '));
 END;
 
 -- ── journal_entries sync triggers ─────────────────────────────────────────────────

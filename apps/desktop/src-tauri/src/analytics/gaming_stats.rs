@@ -95,7 +95,9 @@ pub fn games_by_status(conn: &Connection) -> HashMap<String, i64> {
 pub fn most_played_games(conn: &Connection, limit: usize) -> Result<Vec<GamePlaytime>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, title, total_playtime_secs, cover_path_local, status
+            "SELECT id, title, total_playtime_secs,
+                    COALESCE(cover_path_local, cover_path) AS cover_path,
+                    status
              FROM games
              WHERE total_playtime_secs > 0
              ORDER BY total_playtime_secs DESC
@@ -165,8 +167,8 @@ pub fn activity_heatmap(conn: &Connection) -> Result<Vec<HeatmapCell>, String> {
     let mut stmt = conn
         .prepare(
             r#"SELECT
-                 CAST(strftime('%w', started_at) AS INTEGER) AS dow,
-                 CAST(strftime('%H', started_at) AS INTEGER) AS hour,
+                 CAST(strftime('%w', started_at, 'localtime') AS INTEGER) AS dow,
+                 CAST(strftime('%H', started_at, 'localtime') AS INTEGER) AS hour,
                  COUNT(*) AS sessions
                FROM sessions
                WHERE started_at IS NOT NULL

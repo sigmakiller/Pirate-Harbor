@@ -23,16 +23,6 @@ pub struct UserContext {
     pub completion_rate: f64,
 }
 
-// ── Recommendation ────────────────────────────────────────────────────────────
-
-/// Raw output from a single strategy's scoring pass.
-#[derive(Debug, Clone)]
-pub struct Recommendation {
-    pub game_id:  String,
-    pub score:    f64,
-    pub reason:   String,
-}
-
 // ── Strategy trait ────────────────────────────────────────────────────────────
 
 /// A pluggable recommendation strategy.

@@ -137,8 +137,8 @@ impl AssetManager {
     /// Check if a file with the same content already exists.
     ///
     /// Returns `Some(AssetRef)` if a duplicate is found, `None` if the
-    /// content is new.  The returned `AssetRef` points to the *existing* file
-    /// so the caller can reuse it without copying.
+    /// content is new.  The returned `AssetRef` points to the *original* stored
+    /// asset (cover or background) so the caller can reuse it without copying.
     pub fn deduplicate(&self, source: &Path) -> Result<Option<AssetRef>, String> {
         let hash = dedup::hash_file(source)
             .map_err(|e| format!("Failed to hash file: {e}"))?;
@@ -146,15 +146,26 @@ impl AssetManager {
         let marker = dedup::dedup_marker_path(&self.thumbnails_dir, hash);
 
         if marker.exists() {
-            // Duplicate detected — try to find the corresponding cover or
-            // background (the caller's responsibility to check the right dir).
-            // We return an AssetRef pointing to the thumbnail so the caller
-            // knows the hash; they can reconstruct the cover path if needed.
-            let thumb = thumbnail_gen::thumbnail_path(&self.thumbnails_dir, hash);
-            if thumb.exists() {
+            // Read the original asset path stored in the marker.
+            let stored = std::fs::read_to_string(&marker).unwrap_or_default();
+            let asset_path = std::path::PathBuf::from(stored.trim());
+
+            if asset_path.exists() {
+                // Determine asset type from parent dir name for the AssetRef.
+                let asset_type = if asset_path.parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .contains("background")
+                {
+                    AssetType::Background
+                } else {
+                    AssetType::Cover
+                };
+
                 return Ok(Some(AssetRef {
-                    path:         thumb,
-                    asset_type:   AssetType::Thumbnail,
+                    path:         asset_path,
+                    asset_type,
                     content_hash: dedup::hash_to_hex(hash),
                 }));
             }
@@ -163,7 +174,9 @@ impl AssetManager {
         Ok(None)
     }
 
-    /// Write the dedup sentinel for a given file hash.
+    /// Write a dedup sentinel for a given file hash (no path stored).
+    ///
+    /// Used for gallery images where the exact path varies per game.
     fn write_dedup_marker(&self, hash: u64) -> Result<(), String> {
         let marker = dedup::dedup_marker_path(&self.thumbnails_dir, hash);
         if !marker.exists() {
@@ -171,6 +184,17 @@ impl AssetManager {
                 .map_err(|e| format!("Failed to write dedup marker: {e}"))?;
         }
         Ok(())
+    }
+
+    /// Write a dedup sentinel storing the original asset path.
+    ///
+    /// Allows `deduplicate()` to return the exact cover/background path so
+    /// callers don't receive a thumbnail path (M4 review fix).
+    pub(crate) fn write_dedup_marker_with_path(&self, hash: u64, asset_path: &Path) -> Result<(), String> {
+        let marker = dedup::dedup_marker_path(&self.thumbnails_dir, hash);
+        let content = asset_path.to_string_lossy().into_owned();
+        std::fs::write(&marker, content.as_bytes())
+            .map_err(|e| format!("Failed to write dedup marker with path: {e}"))
     }
 
     // ── Store operations ──────────────────────────────────────────────────────
@@ -194,7 +218,7 @@ impl AssetManager {
             thumbnail_gen::generate_thumbnail(&dest, &thumb_dest)?;
         }
 
-        self.write_dedup_marker(hash)?;
+        self.write_dedup_marker_with_path(hash, &dest)?;
 
         Ok(AssetRef {
             path:         dest,
@@ -213,7 +237,7 @@ impl AssetManager {
         let dest = background_cache::background_path(&self.backgrounds_dir, game_id);
         background_cache::process_background(source, &dest)?;
 
-        self.write_dedup_marker(hash)?;
+        self.write_dedup_marker_with_path(hash, &dest)?;
 
         Ok(AssetRef {
             path:         dest,

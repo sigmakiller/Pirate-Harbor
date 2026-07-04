@@ -95,7 +95,8 @@ fn query_games(
     cap: i64,
 ) -> Result<Vec<GameSearchHit>, String> {
     const SQL: &str = r#"
-        SELECT g.id, g.title, g.developer, g.genre, g.status, g.cover_path_local
+        SELECT g.id, g.title, g.developer, g.genre, g.status,
+               COALESCE(g.cover_path_local, g.cover_path) AS cover_path
         FROM games_fts
         JOIN games g ON games_fts.rowid = g.rowid
         WHERE games_fts MATCH ?1
