@@ -28,6 +28,15 @@ pub fn start_worker(
     let app = app_handle.clone();
 
     tauri::async_runtime::spawn(async move {
+        // DESIGN: The loop awaits each job to completion before dequeuing the
+        // next.  This sequential design is intentional:
+        //   1. SQLite WAL mode allows concurrent readers but only one writer.
+        //      Running multiple jobs simultaneously would cause write contention.
+        //   2. Enrichment / cover-download jobs are I/O-bound; running them
+        //      serially keeps resource usage predictable on low-end hardware.
+        //   3. Future parallelism can be introduced with a `tokio::sync::Semaphore`
+        //      if job types that are genuinely independent (e.g. read-only stats)
+        //      need to run concurrently.
         loop {
             // Poll every 500ms.
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;

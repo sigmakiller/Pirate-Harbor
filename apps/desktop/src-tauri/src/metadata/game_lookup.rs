@@ -86,7 +86,7 @@ pub fn find_related_games(
 
     // 1. Genre + developer match (strongest signal).
     if genre.is_some() && developer.is_some() {
-        let sql = "SELECT id, title, cover_path_local, genre, developer, status, total_playtime_secs
+        let sql = "SELECT id, title, COALESCE(cover_path_local, cover_path), genre, developer, status, total_playtime_secs
                    FROM games
                    WHERE id != ?1 AND genre = ?2 AND developer = ?3
                    ORDER BY total_playtime_secs DESC LIMIT ?4";
@@ -105,7 +105,7 @@ pub fn find_related_games(
     // 2. Same genre only.
     if results.len() < limit {
         if let Some(ref g) = genre {
-            let sql = "SELECT id, title, cover_path_local, genre, developer, status, total_playtime_secs
+            let sql = "SELECT id, title, COALESCE(cover_path_local, cover_path), genre, developer, status, total_playtime_secs
                        FROM games
                        WHERE id != ?1 AND genre = ?2
                        ORDER BY total_playtime_secs DESC LIMIT ?3";
@@ -125,7 +125,7 @@ pub fn find_related_games(
     // 3. Same developer only.
     if results.len() < limit {
         if let Some(ref dev) = developer {
-            let sql = "SELECT id, title, cover_path_local, genre, developer, status, total_playtime_secs
+            let sql = "SELECT id, title, COALESCE(cover_path_local, cover_path), genre, developer, status, total_playtime_secs
                        FROM games
                        WHERE id != ?1 AND developer = ?2
                        ORDER BY total_playtime_secs DESC LIMIT ?3";
@@ -145,7 +145,7 @@ pub fn find_related_games(
     // 4. Same publisher only (fallback).
     if results.len() < limit {
         if let Some(ref pub_) = publisher {
-            let sql = "SELECT id, title, cover_path_local, genre, developer, status, total_playtime_secs
+            let sql = "SELECT id, title, COALESCE(cover_path_local, cover_path), genre, developer, status, total_playtime_secs
                        FROM games
                        WHERE id != ?1 AND publisher = ?2
                        ORDER BY total_playtime_secs DESC LIMIT ?3";
@@ -183,7 +183,7 @@ pub fn find_by_genre_overlap(
         .collect::<Vec<_>>()
         .join(", ");
     let sql = format!(
-        "SELECT id, title, cover_path_local, genre, developer, status, total_playtime_secs
+        "SELECT id, title, COALESCE(cover_path_local, cover_path), genre, developer, status, total_playtime_secs
          FROM games
          WHERE id != ?1 AND genre IN ({})
          ORDER BY total_playtime_secs DESC LIMIT ?{}",
@@ -228,7 +228,7 @@ pub fn find_by_developer(
     developer: &str,
     exclude_id: &str,
 ) -> Result<Vec<RelatedGame>, String> {
-    let sql = "SELECT id, title, cover_path_local, genre, developer, status, total_playtime_secs
+    let sql = "SELECT id, title, COALESCE(cover_path_local, cover_path), genre, developer, status, total_playtime_secs
                FROM games
                WHERE developer = ?1 AND id != ?2
                ORDER BY total_playtime_secs DESC";

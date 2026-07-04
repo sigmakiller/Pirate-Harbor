@@ -1,11 +1,12 @@
 //! Genre match strategy — T31.
 //!
-//! Binary genre match: 1.0 if the candidate's genre appears anywhere in the
-//! user's playtime map (i.e. they have played *any* game in that genre),
-//! 0.5 if the user has *no* genre data at all (fallback: boost everything),
-//! 0.0 if the genre is known but the user hasn't played it.
+//! Binary genre match: 1.0 if **any** token in the candidate's genre string
+//! appears in the user's playtime map (i.e. they have played a game in that
+//! genre), 0.5 if the user has no genre history, 0.0 otherwise.
 //!
-//! Lighter-weight than ContentBasedStrategy — ignores time amounts.
+//! Handles comma-separated multi-genre strings (C2 / review fix):
+//! "Action, RPG" scores 1.0 if the user has played RPG games, even if they've
+//! never played a pure "Action, RPG" tagged game.
 
 use rusqlite::Connection;
 
@@ -17,21 +18,23 @@ impl RecommendationStrategy for GenreStrategy {
     fn name(&self) -> &str { "genre_match" }
 
     fn score(&self, _conn: &Connection, candidate: &Candidate, ctx: &UserContext) -> f64 {
-        let genre = match &candidate.genre {
+        let genre_str = match &candidate.genre {
             Some(g) => g,
             None => return 0.3, // No genre info — mild boost
         };
 
         if ctx.genre_playtime.is_empty() {
-            // User has no playtime history yet — treat all genres equally.
+            // User has no playtime history — treat all genres equally.
             return 0.5;
         }
 
-        if ctx.genre_playtime.contains_key(genre.as_str()) {
-            1.0
-        } else {
-            0.0
-        }
+        // Match if ANY genre token in the candidate is in the user's history.
+        let any_match = genre_str
+            .split(',')
+            .map(str::trim)
+            .any(|g| ctx.genre_playtime.contains_key(g));
+
+        if any_match { 1.0 } else { 0.0 }
     }
 
     fn explain(&self, _conn: &Connection, candidate: &Candidate, _ctx: &UserContext) -> String {
