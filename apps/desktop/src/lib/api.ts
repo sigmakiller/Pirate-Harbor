@@ -831,3 +831,52 @@ export async function getYearInReview(year?: number): Promise<YearInReview> {
 export async function getRelatedGames(gameId: string, limit?: number): Promise<RelatedGame[]> {
   return invoke<RelatedGame[]>("get_related_games", { gameId, limit });
 }
+
+// ── Export (T32) ──────────────────────────────────────────────────────────────
+
+/** Preview information shown before starting an export. */
+export interface ExportPreview {
+  game_count: number;
+  milestone_count: number;
+  journal_count: number;
+  session_count: number;
+  estimated_size_bytes: number;
+}
+
+/** Returned immediately when an export job is queued. */
+export interface ExportQueued {
+  /** Poll get_job_status(job_id) for progress. */
+  job_id: string;
+  /** Absolute path the export file will be written to. */
+  output_path: string;
+}
+
+/**
+ * Get a lightweight preview of the export — game count, milestone count,
+ * estimated file size.  Fast; no file I/O.
+ */
+export async function getExportPreview(): Promise<ExportPreview> {
+  return invoke<ExportPreview>("get_export_preview");
+}
+
+/**
+ * Export the full library to a JSON file (async background job).
+ *
+ * @param path  Absolute path to write the file, e.g.
+ *              "C:\\Users\\name\\Desktop\\library.json"
+ * @returns     ExportQueued with a job_id to poll for status.
+ */
+export async function exportLibraryJson(path: string): Promise<ExportQueued> {
+  return invoke<ExportQueued>("export_library_json", { path });
+}
+
+/**
+ * Export a human-readable profile report to Markdown (async background job).
+ *
+ * @param path  Absolute path to write the file, e.g.
+ *              "C:\\Users\\name\\Desktop\\profile.md"
+ * @returns     ExportQueued with a job_id to poll for status.
+ */
+export async function exportProfileMarkdown(path: string): Promise<ExportQueued> {
+  return invoke<ExportQueued>("export_profile_markdown", { path });
+}
