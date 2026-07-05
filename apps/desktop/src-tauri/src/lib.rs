@@ -148,6 +148,10 @@ pub fn run() {
             commands::analytics::get_completion_stats,
             commands::analytics::get_year_in_review,
             commands::analytics::get_related_games,
+            // ── Export (T32) ──────────────────────────────────────────────────────
+            commands::export::get_export_preview,
+            commands::export::export_library_json,
+            commands::export::export_profile_markdown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

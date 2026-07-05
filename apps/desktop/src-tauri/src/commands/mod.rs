@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod assets;
 pub mod background;
 pub mod collections;
+pub mod export;
 pub mod games;
 pub mod identity;
 pub mod journal;
