@@ -482,12 +482,12 @@ impl AssetManager {
 /// Sum of sizes of all *direct* children (non-recursive).
 fn dir_size(dir: &Path) -> Result<u64, String> {
     if !dir.exists() { return Ok(0); }
-    std::fs::read_dir(dir)
+    let total = std::fs::read_dir(dir)
         .map_err(|e| format!("Failed to read dir {}: {e}", dir.display()))?
         .filter_map(|e| e.ok())
         .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
-        .sum::<u64>()
-        .pipe(Ok)
+        .sum::<u64>();
+    Ok(total)
 }
 
 /// Recursive sum of sizes.
@@ -542,11 +542,3 @@ fn count_files_recursive(dir: &Path) -> u64 {
         .filter(|e| e.file_type().is_file())
         .count() as u64
 }
-
-// ── Pipe helper ───────────────────────────────────────────────────────────────
-
-trait Pipe: Sized {
-    fn pipe<F: FnOnce(Self) -> R, R>(self, f: F) -> R { f(self) }
-}
-
-impl<T> Pipe for T {}
