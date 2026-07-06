@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod assets;
 pub mod background;
+pub mod backup;
 pub mod collections;
 pub mod export;
 pub mod games;

@@ -152,6 +152,10 @@ pub fn run() {
             commands::export::get_export_preview,
             commands::export::export_library_json,
             commands::export::export_profile_markdown,
+            // ── Backup (T33) ──────────────────────────────────────────────────────
+            commands::backup::create_backup,
+            commands::backup::restore_backup,
+            commands::backup::list_auto_backups,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

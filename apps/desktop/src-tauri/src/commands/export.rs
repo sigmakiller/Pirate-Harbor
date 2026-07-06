@@ -75,7 +75,7 @@ struct LibraryExport {
 ///
 /// Column names from the prepared statement become JSON keys.
 /// SQLite types map as: TEXT → String, INTEGER → i64, REAL → f64, NULL → null.
-fn query_as_json(
+pub fn query_as_json(
     conn: &Connection,
     sql: &str,
     params: &[&dyn rusqlite::types::ToSql],

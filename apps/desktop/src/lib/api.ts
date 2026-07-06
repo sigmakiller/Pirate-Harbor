@@ -880,3 +880,51 @@ export async function exportLibraryJson(path: string): Promise<ExportQueued> {
 export async function exportProfileMarkdown(path: string): Promise<ExportQueued> {
   return invoke<ExportQueued>("export_profile_markdown", { path });
 }
+
+// ── Backup / Restore (T33) ────────────────────────────────────────────────────
+
+export interface BackupResult {
+  path: string;
+  size_bytes: number;
+  game_count: number;
+  duration_ms: number;
+}
+
+export interface RestoreResult {
+  games_restored: number;
+  warnings: string[];
+}
+
+export interface BackupInfo {
+  path: string;
+  created_at: string;
+  size_bytes: number;
+  game_count: number;
+  is_auto: boolean;
+}
+
+export interface BackupQueued {
+  job_id: string;
+  output_path: string;
+}
+
+/**
+ * Create a .phb backup archive (async background job).
+ * @param path  Absolute path ending in .phb, e.g. "C:\\Users\\name\\Desktop\\backup.phb"
+ */
+export async function createBackup(path: string): Promise<BackupQueued> {
+  return invoke<BackupQueued>("create_backup", { path });
+}
+
+/**
+ * Restore from a .phb archive (synchronous — rewrites DB + images).
+ * @param path  Absolute path to the .phb file to restore from.
+ */
+export async function restoreBackup(path: string): Promise<RestoreResult> {
+  return invoke<RestoreResult>("restore_backup", { path });
+}
+
+/** List all .phb backups in the default backup directory, newest first. */
+export async function listAutoBackups(): Promise<BackupInfo[]> {
+  return invoke<BackupInfo[]>("list_auto_backups");
+}
