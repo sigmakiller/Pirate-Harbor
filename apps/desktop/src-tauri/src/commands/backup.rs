@@ -274,10 +274,12 @@ pub fn restore_backup_file(
 
 // ─── Auto-backup helpers ──────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 const SETTING_AUTO_BACKUP_INTERVAL: &str = "auto_backup_interval";
 const SETTING_LAST_AUTO_BACKUP: &str = "last_auto_backup_at";
 const MAX_AUTO_BACKUPS: usize = 5;
 
+#[allow(dead_code)]
 fn get_setting_val(conn: &Connection, key: &str) -> Option<String> {
     conn.query_row(
         "SELECT value FROM settings WHERE key = ?1",
@@ -405,6 +407,7 @@ impl Job for CreateBackupJob {
     }
 }
 
+#[allow(dead_code)]
 pub struct AutoBackupJob {
     pub app_data_dir: PathBuf,
 }
