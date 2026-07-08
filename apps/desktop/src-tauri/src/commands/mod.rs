@@ -3,6 +3,7 @@ pub mod assets;
 pub mod background;
 pub mod backup;
 pub mod collections;
+pub mod diagnostics;
 pub mod export;
 pub mod games;
 pub mod identity;

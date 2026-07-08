@@ -928,3 +928,48 @@ export async function restoreBackup(path: string): Promise<RestoreResult> {
 export async function listAutoBackups(): Promise<BackupInfo[]> {
   return invoke<BackupInfo[]>("list_auto_backups");
 }
+
+// ── Diagnostics (T35) ─────────────────────────────────────────────────────────
+
+export interface TableCounts {
+  games: number;
+  sessions: number;
+  collections: number;
+  collection_games: number;
+  milestones: number;
+  journal_entries: number;
+  settings: number;
+}
+
+export interface DiagnosticsReport {
+  schema_version: number;
+  target_schema_version: number;
+  schema_up_to_date: boolean;
+  db_size_bytes: number;
+  wal_enabled: boolean;
+  foreign_keys_enabled: boolean;
+  table_counts: TableCounts;
+  active_job_count: number;
+  storage: StorageStats;
+  db_path: string;
+}
+
+export interface IntegrityResult {
+  ok: boolean;
+  messages: string[];
+}
+
+/** Full DB health report — schema version, table counts, storage stats. */
+export async function getDiagnostics(): Promise<DiagnosticsReport> {
+  return invoke<DiagnosticsReport>("get_diagnostics");
+}
+
+/** Run SQLite PRAGMA integrity_check. Returns ok:true for a healthy DB. */
+export async function runIntegrityCheck(): Promise<IntegrityResult> {
+  return invoke<IntegrityResult>("run_integrity_check");
+}
+
+/** Absolute path to the pirate_harbor.db file. */
+export async function getDbPath(): Promise<string> {
+  return invoke<string>("get_db_path");
+}
