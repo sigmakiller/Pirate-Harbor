@@ -156,6 +156,10 @@ pub fn run() {
             commands::backup::create_backup,
             commands::backup::restore_backup,
             commands::backup::list_auto_backups,
+            // ── Diagnostics (T35) ────────────────────────────────────────────────
+            commands::diagnostics::get_diagnostics,
+            commands::diagnostics::run_integrity_check,
+            commands::diagnostics::get_db_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

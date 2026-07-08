@@ -7,13 +7,15 @@
  * Sections:
  *   1. Appearance        — default library view mode
  *   2. Scan Directories  — T10: watched folder management + scan results
- *   3. Storage           — database location info
- *   4. About             — version, commit, links
+ *   3. Storage           — DB size, image cache, clear cache (T35)
+ *   4. Diagnostics       — schema version, table counts, integrity check (T35)
+ *   5. Updates           — version display, update placeholder (T35)
+ *   6. About             — version, commit, links
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate }                        from "react-router-dom";
-import { Monitor, Database, Info, Check, FolderSearch, Plus, X, Search, RefreshCw, Key } from "lucide-react";
+import { Monitor, Info, Check, FolderSearch, Plus, X, Search, RefreshCw, Key, Activity, Zap, HardDrive } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { useSettingsStore }   from "@/stores/useSettingsStore";
@@ -23,7 +25,13 @@ import {
   addScanDirectory,
   removeScanDirectory,
   scanAllDirectories,
+  getDiagnostics,
+  runIntegrityCheck,
+  cleanupOrphanAssets,
+  rebuildSearchIndex,
   type ScanResult,
+  type DiagnosticsReport,
+  type IntegrityResult,
 } from "@/lib/api";
 import type { ViewMode }      from "@/stores/useLibraryStore";
 import type { NewGame }       from "@/types";
@@ -49,6 +57,22 @@ export default function SettingsPage() {
   const [rawgKey,       setRawgKey]       = useState("");
   const [rawgKeySaved,  setRawgKeySaved]  = useState(false);
 
+  // ── Diagnostics state (T35) ─────────────────────────────────────────────────
+  const [diagnostics,       setDiagnostics]       = useState<DiagnosticsReport | null>(null);
+  const [diagLoading,       setDiagLoading]        = useState(false);
+  const [integrity,         setIntegrity]          = useState<IntegrityResult | null>(null);
+  const [integrityRunning,  setIntegrityRunning]   = useState(false);
+  const [clearingCache,     setClearingCache]       = useState(false);
+  const [rebuildingIndex,   setRebuildingIndex]    = useState(false);
+  const [diagMsg,           setDiagMsg]            = useState<string | null>(null);
+
+  const loadDiagnostics = useCallback(async () => {
+    setDiagLoading(true);
+    try { setDiagnostics(await getDiagnostics()); }
+    catch { /* non-fatal */ }
+    finally { setDiagLoading(false); }
+  }, []);
+
   // Load settings + scan dirs on mount
   useEffect(() => {
     loadSettings();
@@ -58,7 +82,9 @@ export default function SettingsPage() {
     // Load RAWG key into local state
     const savedKey = getSetting("rawg_api_key", "");
     if (typeof savedKey === "string") setRawgKey(savedKey);
-  }, [loadSettings, getSetting]);
+    // Load diagnostics
+    loadDiagnostics();
+  }, [loadSettings, getSetting, loadDiagnostics]);
 
   const defaultView = (getSetting("default_view", "grid") as ViewMode) ?? "grid";
 
@@ -439,21 +465,141 @@ export default function SettingsPage() {
         </SettingRow>
       </Section>
 
-      {/* ── Section: Storage ─────────────────────────────────────────────── */}
-      <Section icon={<Database size={14} />} title="Storage">
-        <SettingRow
-          label="Database"
-          hint="SQLite database file — pirate_harbor.db in your app data directory"
-        >
+      {/* ── Section: Storage (T35) ────────────────────────────────────────── */}
+      <Section icon={<HardDrive size={14} />} title="Storage">
+        <SettingRow label="Database file" hint="SQLite WAL database — pirate_harbor.db">
           <code style={styles.pathCode}>
-            %APPDATA%\com.pirateharbor.app\pirate_harbor.db
+            {diagnostics?.db_path ?? "%APPDATA%\\com.pirateharbor.app\\pirate_harbor.db"}
           </code>
         </SettingRow>
-        <SettingRow
-          label="Cover images"
-          hint="Cover art is stored as file paths — no copying occurs"
-        >
-          <span style={styles.valueMono}>Referenced locally</span>
+        <SettingRow label="Database size">
+          <span style={styles.valueMono}>
+            {diagnostics ? `${(diagnostics.db_size_bytes / 1024).toFixed(1)} KB` : "—"}
+          </span>
+        </SettingRow>
+        <SettingRow label="Image cache" hint="Covers, backgrounds, gallery images">
+          <span style={styles.valueMono}>
+            {diagnostics ? `${(diagnostics.storage.total_bytes / 1024 / 1024).toFixed(2)} MB` : "—"}
+          </span>
+        </SettingRow>
+        <SettingRow label="Cache breakdown">
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {diagnostics && (<>
+              <span style={styles.valueMono}>Covers: {(diagnostics.storage.covers_bytes / 1024).toFixed(0)} KB</span>
+              <span style={styles.valueMono}>Gallery: {(diagnostics.storage.gallery_bytes / 1024).toFixed(0)} KB</span>
+              <span style={styles.valueMono}>Thumbnails: {(diagnostics.storage.thumbnails_bytes / 1024).toFixed(0)} KB</span>
+            </>)}
+          </div>
+        </SettingRow>
+        <SettingRow label="Clear orphan assets" hint="Delete images for games no longer in library">
+          <button
+            id="clear-orphan-assets-btn"
+            disabled={clearingCache}
+            style={styles.dangerBtn}
+            onClick={async () => {
+              setClearingCache(true);
+              try {
+                const r = await cleanupOrphanAssets();
+                setDiagMsg(`Cleared ${r.deleted_count} files (${(r.bytes_freed / 1024).toFixed(0)} KB freed)`);
+                await loadDiagnostics();
+              } catch (e) { setDiagMsg(String(e)); }
+              finally { setClearingCache(false); }
+            }}
+          >
+            {clearingCache ? "Clearing…" : "Clear Orphans"}
+          </button>
+        </SettingRow>
+      </Section>
+
+      {/* ── Section: Diagnostics (T35) ────────────────────────────────────── */}
+      <Section icon={<Activity size={14} />} title="Diagnostics">
+        {diagMsg && (
+          <div style={styles.diagMsg} role="status" aria-live="polite">
+            {diagMsg}
+            <button onClick={() => setDiagMsg(null)} style={styles.diagMsgClose} aria-label="Dismiss">×</button>
+          </div>
+        )}
+        <SettingRow label="Schema version">
+          <span style={{ ...styles.valueMono, color: diagnostics?.schema_up_to_date ? "var(--color-text-secondary)" : "#e57" }}>
+            {diagnostics ? `v${diagnostics.schema_version} / v${diagnostics.target_schema_version}${diagnostics.schema_up_to_date ? " ✓" : " — migration needed"}` : "—"}
+          </span>
+        </SettingRow>
+        <SettingRow label="WAL mode">
+          <span style={styles.valueMono}>{diagnostics ? (diagnostics.wal_enabled ? "Enabled ✓" : "Disabled") : "—"}</span>
+        </SettingRow>
+        <SettingRow label="Foreign keys">
+          <span style={styles.valueMono}>{diagnostics ? (diagnostics.foreign_keys_enabled ? "Enabled ✓" : "Disabled") : "—"}</span>
+        </SettingRow>
+        <SettingRow label="Table counts">
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {diagnostics && Object.entries(diagnostics.table_counts).map(([k, v]) => (
+              <span key={k} style={styles.valueMono}>{k}: {v}</span>
+            ))}
+          </div>
+        </SettingRow>
+        <SettingRow label="Active background jobs">
+          <span style={styles.valueMono}>{diagnostics?.active_job_count ?? "—"}</span>
+        </SettingRow>
+        <SettingRow label="Integrity check" hint="PRAGMA integrity_check — safe read-only operation">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <button
+              id="run-integrity-check-btn"
+              disabled={integrityRunning}
+              style={styles.actionBtn}
+              onClick={async () => {
+                setIntegrityRunning(true);
+                try { setIntegrity(await runIntegrityCheck()); }
+                catch (e) { setDiagMsg(String(e)); }
+                finally { setIntegrityRunning(false); }
+              }}
+            >
+              {integrityRunning ? "Checking…" : "Run Integrity Check"}
+            </button>
+            {integrity && (
+              <span style={{ ...styles.valueMono, color: integrity.ok ? "var(--color-text-secondary)" : "#e57" }}>
+                {integrity.ok ? "✓ Database is healthy" : integrity.messages.join(" | ")}
+              </span>
+            )}
+          </div>
+        </SettingRow>
+        <SettingRow label="Search index" hint="Rebuild the FTS5 full-text search index">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <button
+              id="rebuild-search-index-btn"
+              disabled={rebuildingIndex}
+              style={styles.actionBtn}
+              onClick={async () => {
+                setRebuildingIndex(true);
+                try {
+                  const r = await rebuildSearchIndex();
+                  setDiagMsg(`Search index rebuilt — ${r.games_indexed} games, ${r.journal_indexed} journal entries`);
+                } catch (e) { setDiagMsg(String(e)); }
+                finally { setRebuildingIndex(false); }
+              }}
+            >
+              {rebuildingIndex ? "Rebuilding…" : "Rebuild Search Index"}
+            </button>
+          </div>
+        </SettingRow>
+        <SettingRow label="Refresh stats">
+          <button id="refresh-diagnostics-btn" disabled={diagLoading} style={styles.actionBtn} onClick={loadDiagnostics}>
+            {diagLoading ? "Refreshing…" : "Refresh"}
+          </button>
+        </SettingRow>
+      </Section>
+
+      {/* ── Section: Updates (T35 placeholder) ──────────────────────────── */}
+      <Section icon={<Zap size={14} />} title="Updates">
+        <SettingRow label="Current version">
+          <span style={styles.valueMono}>v{APP_VERSION}</span>
+        </SettingRow>
+        <SettingRow label="Check for updates" hint="Automatic update checks — coming in Phase 5">
+          <button id="check-updates-btn" disabled style={{ ...styles.actionBtn, opacity: 0.4, cursor: "not-allowed" }}>
+            Check for Updates
+          </button>
+        </SettingRow>
+        <SettingRow label="Update channel">
+          <span style={{ ...styles.valueMono, opacity: 0.5 }}>stable — Phase 5</span>
         </SettingRow>
       </Section>
 
@@ -933,5 +1079,54 @@ const styles = {
     letterSpacing: "0.10em",
     textTransform: "uppercase" as const,
     color:         "var(--color-text-disabled)",
+  },
+  actionBtn: {
+    background:   "var(--color-surface-02)",
+    border:       "1px solid var(--color-border)",
+    color:        "var(--color-text-muted)",
+    fontFamily:   "var(--font-mono)",
+    fontSize:     11,
+    letterSpacing: "0.06em",
+    padding:      "6px 14px",
+    borderRadius: 1,
+    cursor:       "pointer",
+    transition:   "background 150ms, color 150ms",
+  },
+  dangerBtn: {
+    background:   "transparent",
+    border:       "1px solid var(--color-border)",
+    color:        "var(--color-text-disabled)",
+    fontFamily:   "var(--font-mono)",
+    fontSize:     11,
+    letterSpacing: "0.06em",
+    padding:      "6px 14px",
+    borderRadius: 1,
+    cursor:       "pointer",
+    transition:   "border-color 150ms, color 150ms",
+  },
+  diagMsg: {
+    display:       "flex",
+    alignItems:    "center",
+    justifyContent: "space-between",
+    gap:           8,
+    background:    "var(--color-surface-02)",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    padding:       "8px 12px",
+    marginBottom:  8,
+    fontFamily:    "var(--font-mono)",
+    fontSize:      11,
+    color:         "var(--color-text-muted)",
+    letterSpacing: "0.04em",
+  },
+  diagMsgClose: {
+    background: "none",
+    border:     "none",
+    color:      "var(--color-text-disabled)",
+    cursor:     "pointer",
+    fontSize:   14,
+    lineHeight: 1,
+    padding:    "0 4px",
+    flexShrink: 0,
   },
 } satisfies Record<string, React.CSSProperties>;
