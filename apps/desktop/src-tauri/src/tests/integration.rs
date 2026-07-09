@@ -213,6 +213,9 @@ mod tests {
 
     /// Seed a DB with N games for performance tests.
     fn seed_games(conn: &Connection, n: usize) {
+        // m3 fix: use an explicit transaction so N inserts are one fsync,
+        // ensuring the 100ms timing test is not sensitive to debug-build I/O.
+        conn.execute_batch("BEGIN").unwrap();
         for i in 0..n {
             let id    = format!("gid{}", i);
             let title = format!("Game {}", i);
@@ -223,6 +226,7 @@ mod tests {
                 rusqlite::params![id, title, genre],
             ).unwrap();
         }
+        conn.execute_batch("COMMIT").unwrap();
     }
 
     #[test]

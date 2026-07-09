@@ -250,6 +250,12 @@ pub fn restore_backup_file(
     tx.execute_batch("PRAGMA foreign_keys = ON;").ok();
     tx.commit().map_err(|e| format!("Transaction commit failed: {e}"))?;
 
+    // M2 fix: explicitly rebuild FTS5 indexes after bulk DELETE+INSERT.
+    // Triggers should handle this, but an explicit rebuild is safer and ensures
+    // full-text search works correctly on the first query after restore.
+    conn.execute_batch("INSERT INTO games_fts(games_fts) VALUES('rebuild');").ok();
+    conn.execute_batch("INSERT INTO journal_fts(journal_fts) VALUES('rebuild');").ok();
+
     // Extract images/ back to app_data_dir
     let names: Vec<String> = archive.file_names().map(String::from).collect();
     for name in names.iter().filter(|n| n.starts_with("images/")) {
@@ -481,8 +487,8 @@ pub fn restore_backup(
         .into();
     drop(conn_guard);
 
-    // Restore needs &mut Connection — unlock, take ownership temporarily via raw ptr approach
-    // Instead we lock again and get a mutable ref through unsafe deref (safe: we hold the mutex)
+    // The lock is held for the entire restore operation by design — prevents any
+    // concurrent DB read/write during the destructive DELETE + INSERT sequence.
     let mut conn_guard = db.0.lock().map_err(|_| "DB lock poisoned".to_string())?;
     restore_backup_file(&mut conn_guard, &backup_path, &app_data_dir)
 }

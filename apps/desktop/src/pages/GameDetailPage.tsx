@@ -55,21 +55,26 @@ export default function GameDetailPage() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    Promise.all([
+    Promise.allSettled([
       getGame(id), getSessions(id), getCollections(),
       getGalleryImages(id),
       getJournalEntries(id, 10),
       getRelatedGames(id, 8),
       getGameRecommendations(id, 5),
     ]).then(([g, s, cols, gal, jrn, rel, rec]) => {
-      setGame(g); setSessions(s);
-      setCollections(cols);
-      setMemberIds(new Set(cols.filter(c => c.game_ids.includes(id!)).map(c => c.id)));
-      setGallery(gal);
-      setNotes(jrn);
-      setRelated(rel);
-      setRecs(rec);
-    }).catch(e => setError(String(e))).finally(() => setLoading(false));
+      // Core data — propagate error if the game itself can't be loaded.
+      if (g.status === "fulfilled") setGame(g.value); else { setError(String(g.reason)); return; }
+      if (s.status === "fulfilled") setSessions(s.value);
+      if (cols.status === "fulfilled") {
+        setCollections(cols.value);
+        setMemberIds(new Set(cols.value.filter(c => c.game_ids.includes(id!)).map(c => c.id)));
+      }
+      // Non-critical sections gracefully degrade to empty.
+      if (gal.status === "fulfilled") setGallery(gal.value);
+      if (jrn.status === "fulfilled") setNotes(jrn.value);
+      if (rel.status === "fulfilled") setRelated(rel.value);
+      if (rec.status === "fulfilled") setRecs(rec.value);
+    }).finally(() => setLoading(false));
   }, [id]);
 
   const handleGameStopped = useCallback((sid: string) => {

@@ -34,6 +34,14 @@ pub fn run() {
             let conn = db::init_db(&app_data_dir)
                 .expect("Failed to initialize database");
 
+            // C1 fix: persist app_data_dir so backup/restore/diagnostics commands
+            // can resolve the correct asset root without guessing from path heuristics.
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('app_data_dir', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                rusqlite::params![app_data_dir.to_string_lossy()],
+            ).expect("Failed to write app_data_dir to settings");
+
             app.manage(DbState(Mutex::new(conn)));
 
             // ── Launcher state ────────────────────────────────────────────────
