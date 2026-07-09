@@ -7,6 +7,8 @@ mod db;
 mod images;
 mod metadata;
 mod models;
+#[cfg(test)]
+mod tests;
 
 use std::sync::Mutex;
 

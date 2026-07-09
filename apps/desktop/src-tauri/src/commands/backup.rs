@@ -297,6 +297,7 @@ fn set_setting_val(conn: &Connection, key: &str, value: &str) {
 }
 
 /// Returns true if an auto-backup is due based on the stored interval setting.
+#[allow(dead_code)] // Invoked by the Phase 5 startup auto-backup scheduler.
 pub fn is_auto_backup_due(conn: &Connection) -> bool {
     let interval = get_setting_val(conn, SETTING_AUTO_BACKUP_INTERVAL)
         .unwrap_or_else(|| "weekly".to_string());
