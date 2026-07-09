@@ -70,6 +70,7 @@ pub(crate) struct Candidate {
     pub cover_path:      Option<String>,
     pub genre:           Option<String>,
     pub developer:       Option<String>,
+    #[allow(dead_code)] // Reserved for publisher-based filtering (Phase 5)
     pub publisher:       Option<String>,
     pub status:          String,
     pub total_playtime:  i64,

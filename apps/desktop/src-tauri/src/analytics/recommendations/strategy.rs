@@ -20,6 +20,7 @@ pub struct UserContext {
     /// Total lifetime playtime across all games (seconds).
     pub total_playtime_secs: i64,
     /// Fraction of library that is `completed` (0.0–1.0).
+    #[allow(dead_code)] // Reserved for completion-rate-based strategy (Phase 5)
     pub completion_rate: f64,
 }
 
