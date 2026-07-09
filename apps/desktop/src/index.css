@@ -171,3 +171,73 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Skip navigation link (T36) ── */
+.skip-nav {
+  position:   absolute;
+  top:        -999px;
+  left:       0;
+  background: var(--color-surface);
+  color:      var(--color-text-primary);
+  padding:    10px 18px;
+  font-size:  13px;
+  font-family: var(--font-mono);
+  z-index:    9999;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.skip-nav:focus { top: 12px; left: 12px; }
+
+/* ── Skeleton / Ghost-card pulse (T36) ── */
+@keyframes skeleton-pulse {
+  0%   { opacity: 0.10; }
+  50%  { opacity: 0.20; }
+  100% { opacity: 0.10; }
+}
+
+.skeleton {
+  background:    var(--color-surface-02);
+  border-radius: var(--radius-sm);
+  animation:     skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+/* Ghost card — same dimensions as GameCard (3:4 cover + meta) */
+.ghost-card {
+  display:        flex;
+  flex-direction: column;
+  gap:            0;
+  user-select:    none;
+  pointer-events: none;
+}
+.ghost-cover {
+  aspect-ratio: 3 / 4;
+  border-radius: 1px;
+}
+.ghost-title {
+  height:       12px;
+  margin-top:   10px;
+  width:        80%;
+  border-radius: var(--radius-sm);
+}
+.ghost-meta {
+  height:       10px;
+  margin-top:   6px;
+  width:        50%;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Gallery cell — show delete button on hover (T36) ── */
+.gallery-cell:hover .gallery-del {
+  opacity: 1 !important;
+}
+
+/* ── Card hover border highlight (T36) ── */
+.atlas-card-interactive {
+  border: 1px solid var(--color-border);
+  transition: border-color var(--duration-fast) var(--ease-default),
+              transform    var(--duration-normal) var(--ease-default);
+}
+.atlas-card-interactive:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}

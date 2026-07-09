@@ -26,9 +26,11 @@ import {
 import { GameCard }        from "@/components/GameCard";
 import { GameListRow }     from "@/components/GameListRow";
 import { EnrichmentProgressBar } from "@/components/EnrichmentProgressBar";
+import { GhostGrid }      from "@/components/SkeletonLoader";
 import { getAllGames, bulkEnrichLibrary }     from "@/lib/api";
 import { useLibraryStore } from "@/stores/useLibraryStore";
 import { useEnrichmentProgress } from "@/hooks/useEnrichmentProgress";
+import { useGridArrowNav } from "@/hooks/useGridArrowNav";
 import { useToastStore } from "@/stores/useToastStore";
 import type { Game, GameStatus } from "@/types";
 import { useState } from "react";
@@ -48,6 +50,10 @@ export default function LibraryPage() {
   // ── Data ────────────────────────────────────────────────────────────────────
   const [games,   setGames]   = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ── Arrow-key grid navigation (T36) ─────────────────────────────────────────
+  const GRID_COLUMNS = 6; // approximate — matches minmax(160px) on 1280px viewport
+  const gridRef = useGridArrowNav<HTMLDivElement>(GRID_COLUMNS);
   const [error,   setError]   = useState<string | null>(null);
 
   // ── Enrichment ──────────────────────────────────────────────────────────────
@@ -176,10 +182,8 @@ export default function LibraryPage() {
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Library</h1>
-          <p style={styles.subtitle}>
-            {loading
-              ? "Loading…"
-              : `${games.length} game${games.length !== 1 ? "s" : ""}`}
+          <p style={styles.subtitle} aria-live="polite">
+            {loading ? "Loading\u2026" : `${games.length} game${games.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -361,11 +365,19 @@ export default function LibraryPage() {
         </div>
       )}
 
+      {/* ── Skeleton (loading) ────────────────────────────────────────────── */}
+      {loading && <GhostGrid count={12} />}
+
       {/* ── Grid view ────────────────────────────────────────────────────── */}
       {!loading && viewMode === "grid" && displayed.length > 0 && (
-        <div style={styles.grid} role="list" aria-label="Game library">
+        <div
+          ref={gridRef}
+          style={styles.grid}
+          role="grid"
+          aria-label="Game library"
+        >
           {displayed.map((game) => (
-            <div key={game.id} role="listitem">
+            <div key={game.id} role="gridcell">
               <GameCard game={game} onUpdate={handleGameUpdate} />
             </div>
           ))}

@@ -23,6 +23,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { getAllGames, getJournalEntries, getGamingIdentity, type JournalEntry } from "@/lib/api";
 import { formatPlaytime, formatRelativeDate, STATUS_LABELS } from "@/lib/utils";
+import { GhostList } from "@/components/SkeletonLoader";
 import type { Game, GameStatus, GamingIdentity } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,9 +130,7 @@ export default function IdentityPage() {
 
   if (loading) {
     return (
-      <div style={styles.loadingShell}>
-        <p style={styles.loadingText}>Loading…</p>
-      </div>
+      <GhostList count={10} />
     );
   }
 

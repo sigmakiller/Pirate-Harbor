@@ -43,10 +43,12 @@ export function GameCard({ game, onUpdate }: GameCardProps) {
 
   return (
     <article
+      tabIndex={0}
       onClick={() => navigate(`/library/${game.id}`)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/library/${game.id}`); } }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      aria-label={game.title}
+      aria-label={`${game.title}${game.is_favorite ? ", favorited" : ""}`}
       style={{
         ...styles.card,
         transform: hovered ? "scale(1)" : "scale(0.98)",
