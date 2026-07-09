@@ -484,8 +484,9 @@ pub fn export_library_json(
 ) -> Result<ExportQueued, String> {
     // Validate the path before queuing so we fail fast.
     let output_path = PathBuf::from(&path);
-    if output_path.extension().is_none() {
-        return Err("Output path must include a filename (e.g. export.json)".to_string());
+    let ext = output_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if ext != "json" {
+        return Err("Export file must have a .json extension (e.g. export.json)".to_string());
     }
 
     // Quick preview so the job can embed the count in its result.
@@ -515,8 +516,9 @@ pub fn export_profile_markdown(
     path: String,
 ) -> Result<ExportQueued, String> {
     let output_path = PathBuf::from(&path);
-    if output_path.extension().is_none() {
-        return Err("Output path must include a filename (e.g. profile.md)".to_string());
+    let ext = output_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if ext != "md" {
+        return Err("Profile export file must have a .md extension (e.g. profile.md)".to_string());
     }
 
     {
