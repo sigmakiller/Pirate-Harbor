@@ -21,7 +21,7 @@ use rusqlite::Connection;
 /// Increment this whenever a new MIGRATION_NNN is added.
 // T35: Consumed by the diagnostics command via `db::CURRENT_SCHEMA_VERSION`.
 #[allow(dead_code)]
-pub const CURRENT_SCHEMA_VERSION: i32 = 7;
+pub const CURRENT_SCHEMA_VERSION: i32 = 8;
 
 // ── Versioned migration table ─────────────────────────────────────────────────
 
@@ -37,13 +37,14 @@ struct Migration {
 /// from version (i) to version (i+1), i.e., `migration.version` is the
 /// version AFTER applying it.
 const MIGRATIONS: &[Migration] = &[
-    Migration { version: 1, description: "Initial schema", sql: MIGRATION_001 },
-    Migration { version: 2, description: "Search cache",   sql: MIGRATION_002 },
-    Migration { version: 3, description: "Collections",    sql: MIGRATION_003 },
-    Migration { version: 4, description: "Journal",        sql: MIGRATION_004 },
-    Migration { version: 5, description: "Metadata cache", sql: MIGRATION_005 },
-    Migration { version: 6, description: "Milestones",     sql: MIGRATION_006 },
-    Migration { version: 7, description: "FTS5 search",    sql: MIGRATION_007 },
+    Migration { version: 1, description: "Initial schema",           sql: MIGRATION_001 },
+    Migration { version: 2, description: "Search cache",             sql: MIGRATION_002 },
+    Migration { version: 3, description: "Collections",              sql: MIGRATION_003 },
+    Migration { version: 4, description: "Journal",                  sql: MIGRATION_004 },
+    Migration { version: 5, description: "Metadata cache",           sql: MIGRATION_005 },
+    Migration { version: 6, description: "Milestones",               sql: MIGRATION_006 },
+    Migration { version: 7, description: "FTS5 search",              sql: MIGRATION_007 },
+    Migration { version: 8, description: "Achievement tracking",     sql: MIGRATION_008 },
 ];
 
 // ── SQL strings ───────────────────────────────────────────────────────────────
@@ -265,6 +266,35 @@ AFTER UPDATE ON journal_entries BEGIN
 END;
 "#;
 
+/// 008 — Steam achievement tracking: per-game mapping table + enabling columns.
+///
+/// `steam_achievement_mappings` maps a Pirate Harbor game to its Steam
+/// achievement IDs so the file-watcher (T40) can correlate unlocks.
+/// Two nullable columns are added to `games` via `MIGRATION_008_ALTER`.
+const MIGRATION_008: &str = r#"
+CREATE TABLE IF NOT EXISTS steam_achievement_mappings (
+    id           TEXT PRIMARY KEY,
+    game_id      TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    steam_id     TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    description  TEXT,
+    points       INTEGER NOT NULL DEFAULT 10,
+    created_at   TEXT NOT NULL,
+    UNIQUE(game_id, steam_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ach_mappings_game
+    ON steam_achievement_mappings(game_id);
+"#;
+
+/// Columns added to `games` by MIGRATION_008.
+/// Kept separate because SQLite does not support `ALTER TABLE … ADD COLUMN IF NOT EXISTS`.
+/// Errors caused by already-existing columns are intentionally ignored.
+const MIGRATION_008_ALTER: &[(&str, &str, &str)] = &[
+    ("games", "achievement_tracking_enabled", "INTEGER NOT NULL DEFAULT 0"),
+    ("games", "steam_app_id",                 "TEXT"),
+];
+
 // ── Version helpers ───────────────────────────────────────────────────────────
 
 /// Read the current schema version from the `settings` table.
@@ -348,6 +378,14 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         // applied idempotently (SQLite lacks ADD COLUMN IF NOT EXISTS).
         if migration.version == 5 {
             for (table, column, col_type) in MIGRATION_005_ALTER {
+                let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, col_type);
+                let _ = conn.execute_batch(&sql); // Ignore "duplicate column" errors.
+            }
+        }
+
+        // Migration 8 has additional ALTER TABLE statements for `games`.
+        if migration.version == 8 {
+            for (table, column, col_type) in MIGRATION_008_ALTER {
                 let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, col_type);
                 let _ = conn.execute_batch(&sql); // Ignore "duplicate column" errors.
             }
@@ -560,5 +598,46 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    // ── T38 tests ─────────────────────────────────────────────────────────────
+
+    /// Migration 008 must create the steam_achievement_mappings table.
+    #[test]
+    fn test_migration_008_creates_achievement_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'
+                 AND name='steam_achievement_mappings'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "steam_achievement_mappings table must exist after migration 008");
+    }
+
+    /// Migration 008 must add `achievement_tracking_enabled` and `steam_app_id` to `games`.
+    #[test]
+    fn test_migration_008_games_columns_exist() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        // INSERT with both new columns must succeed without error.
+        conn.execute(
+            "INSERT INTO games (id, title, exe_path, added_at, status,
+                                achievement_tracking_enabled, steam_app_id)
+             VALUES ('g1','Test','C:/test.exe',datetime('now'),'unplayed',0,NULL)",
+            [],
+        ).expect("INSERT with new games columns must succeed after migration 008");
+        // Verify the row and column values are queryable.
+        let tracking_enabled: i64 = conn
+            .query_row(
+                "SELECT achievement_tracking_enabled FROM games WHERE id='g1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tracking_enabled, 0, "achievement_tracking_enabled must default to 0");
     }
 }
