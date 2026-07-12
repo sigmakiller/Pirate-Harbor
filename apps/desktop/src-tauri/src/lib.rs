@@ -7,6 +7,7 @@ mod db;
 mod images;
 mod metadata;
 mod models;
+mod steam_bridge;
 #[cfg(test)]
 mod tests;
 
