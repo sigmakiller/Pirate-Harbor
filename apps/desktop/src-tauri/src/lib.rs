@@ -19,6 +19,7 @@ use assets::AssetManager;
 use background::JobScheduler;
 use commands::launcher::LauncherState;
 use db::DbState;
+use steam_bridge::achievement_watcher::WatcherRegistry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -66,6 +67,11 @@ pub fn run() {
                 db_path,
                 app.handle().clone(),
             );
+
+            // ── Achievement watcher registry (T40) ────────────────────────────
+            // Holds active notify watchers keyed by game_id. Populated by
+            // T41 Tauri commands (enable_achievement_tracking / disable_tracking).
+            app.manage(WatcherRegistry::new());
 
             Ok(())
         })
