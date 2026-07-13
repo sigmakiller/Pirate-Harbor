@@ -10,7 +10,7 @@
 //! ```
 
 pub mod dll_swap;
-// T40 additions — uncomment when implemented:
-// pub mod achievement_watcher;
+pub mod achievement_watcher;
+// T41 additions — uncomment when implemented:
 // pub mod achievement_router;
 // pub mod steam_api;
