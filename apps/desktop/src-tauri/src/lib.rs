@@ -185,6 +185,8 @@ pub fn run() {
             commands::achievements::remove_achievement_mapping,
             commands::achievements::get_achievement_mappings,
             commands::achievements::import_achievements_from_steam,
+            // ── Steam App ID detection (T43) ──────────────────────────────────────
+            commands::achievements::detect_steam_app_id,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

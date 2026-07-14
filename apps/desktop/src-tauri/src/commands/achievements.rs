@@ -304,3 +304,166 @@ pub async fn import_achievements_from_steam(
 
     Ok(inserted)
 }
+
+// ── T43 — Steam App ID Auto-Detection ─────────────────────────────────────────
+
+/// How the Steam App ID was resolved.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppIdSource {
+    /// Detected via the RAWG `/games/{id}/stores` endpoint.
+    Rawg,
+    /// Detected from a local `steam_appid.txt` file in the game directory.
+    LocalFile,
+    /// Could not be determined by any tier.
+    NotFound,
+}
+
+/// Return value of [`detect_steam_app_id`].
+#[derive(Debug, Serialize)]
+pub struct AppIdDetectionResult {
+    /// The numeric Steam App ID string, or `None` if not found.
+    pub app_id: Option<String>,
+    /// Which detection tier succeeded.
+    pub source: AppIdSource,
+}
+
+/// Auto-detect the Steam App ID for a game using a 3-tier cascade:
+///
+/// 1. **RAWG stores endpoint** — queries the game's RAWG entry for a Steam
+///    store link and extracts the App ID from the URL.
+/// 2. **Local `steam_appid.txt`** — reads the file from the game directory if
+///    present (written there by Goldberg or manually).
+/// 3. **Not found** — returns `None` with source `not_found`.
+#[tauri::command]
+pub async fn detect_steam_app_id(
+    db:       State<'_, DbState>,
+    game_id:  String,
+    game_dir: String,
+) -> Result<AppIdDetectionResult, String> {
+    // Tier 1 — RAWG stores endpoint.
+    if let Some(id) = try_rawg_stores(&db, &game_id).await {
+        return Ok(AppIdDetectionResult { app_id: Some(id), source: AppIdSource::Rawg });
+    }
+
+    // Tier 2 — local steam_appid.txt file in the game directory.
+    let appid_path = std::path::Path::new(&game_dir).join("steam_appid.txt");
+    if appid_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&appid_path) {
+            let id = content.trim().to_string();
+            if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
+                return Ok(AppIdDetectionResult {
+                    app_id: Some(id),
+                    source: AppIdSource::LocalFile,
+                });
+            }
+        }
+    }
+
+    // Tier 3 — not found.
+    Ok(AppIdDetectionResult { app_id: None, source: AppIdSource::NotFound })
+}
+
+/// Tier 1 helper: call RAWG `/games/{rawg_id}/stores`, look for the Steam
+/// store entry, and extract the App ID from the store URL.
+///
+/// Returns `None` on any network, parse, or DB error — the caller falls
+/// through to the next detection tier.
+async fn try_rawg_stores(db: &State<'_, DbState>, game_id: &str) -> Option<String> {
+    // Look up the RAWG api_id and API key from the DB (no async lock needed).
+    let (rawg_api_id, rawg_key) = {
+        let conn = db.0.lock().ok()?;
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM games WHERE id = ?1",
+                rusqlite::params![game_id],
+                |r| r.get(0),
+            )
+            .ok()?;
+        let api_id: i64 = conn
+            .query_row(
+                "SELECT api_id FROM metadata_cache
+                 WHERE LOWER(game_title) = LOWER(?1) LIMIT 1",
+                rusqlite::params![title],
+                |r| r.get(0),
+            )
+            .ok()?;
+        let key: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'rawg_api_key'",
+                [],
+                |r| r.get(0),
+            )
+            .ok()?;
+        (api_id, key)
+    };
+
+    let client = reqwest::Client::new();
+    let url = format!(
+        "https://api.rawg.io/api/games/{}/stores?key={}",
+        rawg_api_id, rawg_key
+    );
+
+    let resp = client.get(&url).send().await.ok()?;
+    let json: serde_json::Value = resp.json().await.ok()?;
+
+    // Scan results for a Steam store entry and extract the App ID.
+    json["results"].as_array()?.iter().find_map(|entry| {
+        let slug = entry["store"]["slug"].as_str()?;
+        if slug != "steam" { return None; }
+        let store_url = entry["url"].as_str()?;
+        extract_steam_app_id(store_url)
+    })
+}
+
+/// Extract a numeric Steam App ID from a Steam store URL.
+///
+/// Handles both:
+/// * `https://store.steampowered.com/app/570/Dota_2/`  → `"570"`
+/// * `https://store.steampowered.com/app/292030`        → `"292030"`
+fn extract_steam_app_id(url: &str) -> Option<String> {
+    let prefix = "/app/";
+    let start  = url.find(prefix)? + prefix.len();
+    let rest   = &url[start..];
+    let end    = rest.find('/').unwrap_or(rest.len());
+    let id     = &rest[..end];
+    if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
+        Some(id.to_string())
+    } else {
+        None
+    }
+}
+
+// ── T43 Unit tests ─────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::extract_steam_app_id;
+
+    /// Standard Steam URL with a trailing game-name slug.
+    #[test]
+    fn extracts_app_id_with_game_name() {
+        assert_eq!(
+            extract_steam_app_id("https://store.steampowered.com/app/570/Dota_2/"),
+            Some("570".to_string()),
+        );
+    }
+
+    /// URL ending immediately after the numeric App ID (no trailing slash).
+    #[test]
+    fn extracts_app_id_without_trailing_slash() {
+        assert_eq!(
+            extract_steam_app_id("https://store.steampowered.com/app/292030"),
+            Some("292030".to_string()),
+        );
+    }
+
+    /// A non-Steam URL must return `None` — no `/app/` segment present.
+    #[test]
+    fn rejects_non_steam_url() {
+        assert_eq!(
+            extract_steam_app_id("https://gog.com/game/witcher3"),
+            None,
+        );
+    }
+}
