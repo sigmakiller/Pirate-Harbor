@@ -1024,3 +1024,65 @@ export interface AppIdDetectionResult {
   /** Which source provided the App ID. */
   source: AppIdSource;
 }
+
+
+// -- Achievement Commands (T42) ------------------------------------------------
+
+/** Enable Goldberg DLL tracking for a game. */
+export async function enableAchievementTracking(
+  gameId: string,
+  exePath: string,
+  steamAppId: string,
+): Promise<void> {
+  return invoke<void>('enable_achievement_tracking', { gameId, exePath, steamAppId });
+}
+
+/** Restore the original DLL and stop the file watcher. */
+export async function disableAchievementTracking(
+  gameId: string,
+  exePath: string,
+): Promise<void> {
+  return invoke<void>('disable_achievement_tracking', { gameId, exePath });
+}
+
+/** Get current tracking status for a game. */
+export async function getAchievementTrackingStatus(
+  gameId: string,
+): Promise<TrackingStatus> {
+  return invoke<TrackingStatus>('get_achievement_tracking_status', { gameId });
+}
+
+/** Add or replace a single achievement mapping. */
+export async function addAchievementMapping(
+  gameId: string,
+  steamId: string,
+  displayName: string,
+  description: string | null,
+  points: number,
+): Promise<AchievementMapping> {
+  return invoke<AchievementMapping>('add_achievement_mapping', {
+    gameId, steamId, displayName, description, points,
+  });
+}
+
+/** Remove a single achievement mapping by ID. */
+export async function removeAchievementMapping(mappingId: string): Promise<void> {
+  return invoke<void>('remove_achievement_mapping', { mappingId });
+}
+
+/** List all achievement mappings for a game. */
+export async function getAchievementMappings(
+  gameId: string,
+): Promise<AchievementMapping[]> {
+  return invoke<AchievementMapping[]>('get_achievement_mappings', { gameId });
+}
+
+/** Bulk-import achievement definitions from the Steam public schema API. */
+export async function importAchievementsFromSteam(
+  gameId: string,
+  steamAppId: string,
+): Promise<AchievementMapping[]> {
+  return invoke<AchievementMapping[]>('import_achievements_from_steam', {
+    gameId, steamAppId,
+  });
+}
