@@ -1086,3 +1086,14 @@ export async function importAchievementsFromSteam(
     gameId, steamAppId,
   });
 }
+
+
+// -- T43: Steam App ID auto-detection -----------------------------------------
+
+/** Detect the Steam App ID for a game via 3-tier cascade (RAWG, local file, not found). */
+export async function detectSteamAppId(
+  gameId: string,
+  gameDir: string,
+): Promise<AppIdDetectionResult> {
+  return invoke<AppIdDetectionResult>('detect_steam_app_id', { gameId, gameDir });
+}
