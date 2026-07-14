@@ -177,6 +177,14 @@ pub fn run() {
             commands::diagnostics::get_diagnostics,
             commands::diagnostics::run_integrity_check,
             commands::diagnostics::get_db_path,
+            // ── Achievement tracking (T42) ────────────────────────────────────────
+            commands::achievements::enable_achievement_tracking,
+            commands::achievements::disable_achievement_tracking,
+            commands::achievements::get_achievement_tracking_status,
+            commands::achievements::add_achievement_mapping,
+            commands::achievements::remove_achievement_mapping,
+            commands::achievements::get_achievement_mappings,
+            commands::achievements::import_achievements_from_steam,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
