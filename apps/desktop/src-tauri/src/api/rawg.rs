@@ -45,6 +45,33 @@ pub struct RawgPlatform {
     pub name: String,
 }
 
+// ── Store types (T44) ─────────────────────────────────────────────────────────
+
+/// Top-level response from RAWG `/games/{id}/stores`.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct RawgStoresResponse {
+    pub results: Vec<RawgStoreEntry>,
+}
+
+/// A single store listing entry returned by the stores endpoint.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct RawgStoreEntry {
+    /// External store URL (e.g. `https://store.steampowered.com/app/570/Dota_2/`).
+    pub url:   String,
+    /// Store metadata -- the `slug` field identifies the platform.
+    pub store: RawgStore,
+}
+
+/// Minimal store descriptor -- only `slug` is required for App ID extraction.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct RawgStore {
+    /// Platform identifier, e.g. `"steam"`, `"gog"`, `"itch"`.
+    pub slug: String,
+}
+
 /// Rate limiter state
 struct RateLimiter {
     last_request: Option<Instant>,
@@ -194,6 +221,39 @@ impl RawgClient {
                     tokio::time::sleep(delay).await;
                 }
             }
+        }
+    }
+
+    /// Fetch all store listings for a RAWG game ID.
+    ///
+    /// Endpoint: `GET /games/{rawg_id}/stores`
+    ///
+    /// Used by the Steam App ID auto-detection cascade (T43/T44) to locate
+    /// the Steam store URL and extract the numeric App ID from it.
+    ///
+    /// Returns an empty `Vec` on a non-success response rather than an error
+    /// so the caller can silently fall through to the next detection tier.
+    // T44: Not yet called from a command — suppressing warning intentionally.
+    // Will replace the inline reqwest call in try_rawg_stores when T45 refactors.
+    #[allow(dead_code)]
+    pub async fn get_game_stores(&self, rawg_id: i64) -> Result<Vec<RawgStoreEntry>, String> {
+        self.rate_limit().await;
+
+        let url = format!("{}/games/{}/stores?key={}", API_BASE, rawg_id, self.api_key);
+
+        let resp = self.client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("RAWG stores request failed: {e}"))?;
+
+        if resp.status().is_success() {
+            resp.json::<RawgStoresResponse>()
+                .await
+                .map(|r| r.results)
+                .map_err(|e| format!("RAWG stores parse error: {e}"))
+        } else {
+            Err(format!("RAWG stores API error: {}", resp.status()))
         }
     }
 }
