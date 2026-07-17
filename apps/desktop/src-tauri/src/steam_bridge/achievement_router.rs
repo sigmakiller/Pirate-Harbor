@@ -14,7 +14,7 @@
 //! dropped -- the user must import mappings first (via T42 commands).
 
 // All public items become used in T42 Tauri commands.
-#![allow(dead_code)]
+
 
 use std::collections::HashMap;
 

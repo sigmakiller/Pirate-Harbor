@@ -3,8 +3,6 @@
 //! Fetches achievement definitions from Steam's public schema endpoint.
 //! No Steam API key is required for `GetSchemaForGame`.
 
-// All public items become used in T42 Tauri commands.
-#![allow(dead_code)]
 
 use serde::Deserialize;
 

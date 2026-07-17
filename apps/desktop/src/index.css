@@ -164,6 +164,16 @@ body {
   to   { opacity: 1; transform: translateY(0);   }
 }
 
+/* Achievement toast variant (T46) — gradient purple card, amber icon tint.
+   The inline TYPE_CARD in ToastContainer.tsx is the primary mechanism;
+   this class rule acts as a belt-and-suspenders complement (M2 fix). */
+.toast-achievement {
+  background:   linear-gradient(135deg, #1c1917 0%, #2d1a4a 100%);
+  border-color: #7c3aed;
+  font-weight:  600;
+  color:        #fff;
+}
+
 /* ── Accessibility: Reduced Motion ── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
