@@ -9,7 +9,8 @@
 
 import { create } from "zustand";
 
-export type ToastType = "success" | "error" | "info";
+export type ToastType = "success" | "error" | "info" | "achievement";
+
 
 export interface Toast {
   id:      string;
