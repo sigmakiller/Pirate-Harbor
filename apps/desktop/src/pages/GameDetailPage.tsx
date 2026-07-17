@@ -10,14 +10,17 @@ import {
   getCollections, addGameToCollection, removeGameFromCollection,
   getGalleryImages, storeGalleryImage, deleteGalleryImage,
   getJournalEntries, createJournalEntry,
+  getMilestones,
   getRelatedGames, getGameRecommendations,
   type Collection, type AssetRef, type JournalEntry,
   type RelatedGame, type RecommendationResult,
 } from "@/lib/api";
+
 import { useGameStoppedListener } from "@/hooks/useGameStoppedListener";
 import { formatPlaytime, formatRelativeDate } from "@/lib/utils";
 import { useToastStore } from "@/stores/useToastStore";
-import type { Game, Session } from "@/types";
+import type { Game, Session, Milestone } from "@/types";
+
 
 const ASSET_URL = (p: string) =>
   `https://asset.localhost/${encodeURIComponent(p.replace(/\\/g, "/"))}`;
@@ -49,8 +52,12 @@ export default function GameDetailPage() {
   const [savingNote,   setSavingNote]   = useState(false);
 
   // Related / Recommendations
-  const [related,      setRelated]      = useState<RelatedGame[]>([]);
-  const [recs,         setRecs]         = useState<RecommendationResult[]>([]);
+  const [related,             setRelated]             = useState<RelatedGame[]>([]);
+  const [recs,                setRecs]                = useState<RecommendationResult[]>([]);
+
+  // Earned achievements (T47) — milestones in the 'achievement' category
+  const [earnedAchievements,  setEarnedAchievements]  = useState<Milestone[]>([]);
+
 
   useEffect(() => {
     if (!id) return;
@@ -61,7 +68,8 @@ export default function GameDetailPage() {
       getJournalEntries(id, 10),
       getRelatedGames(id, 8),
       getGameRecommendations(id, 5),
-    ]).then(([g, s, cols, gal, jrn, rel, rec]) => {
+      getMilestones(id, "achievement"),
+    ]).then(([g, s, cols, gal, jrn, rel, rec, ach]) => {
       // Core data — propagate error if the game itself can't be loaded.
       if (g.status === "fulfilled") setGame(g.value); else { setError(String(g.reason)); return; }
       if (s.status === "fulfilled") setSessions(s.value);
@@ -74,7 +82,9 @@ export default function GameDetailPage() {
       if (jrn.status === "fulfilled") setNotes(jrn.value);
       if (rel.status === "fulfilled") setRelated(rel.value);
       if (rec.status === "fulfilled") setRecs(rec.value);
+      if (ach.status === "fulfilled") setEarnedAchievements(ach.value);
     }).finally(() => setLoading(false));
+
   }, [id]);
 
   const handleGameStopped = useCallback((sid: string) => {
@@ -308,6 +318,30 @@ export default function GameDetailPage() {
             )}
         </section>
 
+        {/* Earned Achievements (T47) — hidden when none earned */}
+        {earnedAchievements.length > 0 && (
+          <section style={S.section} aria-labelledby="achievements-heading">
+            <h2 id="achievements-heading" style={S.sectionTitle}>
+              🏆 Earned Achievements ({earnedAchievements.length})
+            </h2>
+            <ul style={S.achList} aria-label="Earned achievements">
+              {earnedAchievements.map((a) => (
+                <li key={a.id} style={S.achItem}>
+                  <span style={S.achIcon} aria-hidden="true">🏆</span>
+                  <div>
+                    <p style={S.achName}>{a.title}</p>
+                    <p style={S.achMeta}>
+                      {formatRelativeDate(a.achievement_date)}
+                      {" · "}
+                      {a.points} pts
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {/* Related Titles */}
         {(related.length > 0 || recs.length > 0) && (
           <section style={S.section} aria-labelledby="related-heading">
@@ -410,4 +444,10 @@ const S: Record<string, React.CSSProperties> = {
   collMenuEmpty:     { fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--color-text-disabled)", padding: "8px 14px", margin: 0, letterSpacing: "0.06em" },
   collMenuItem:      { display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: "8px 14px", cursor: "pointer", width: "100%", textAlign: "left", transition: "background 100ms" },
   collMenuLabel:     { fontFamily: "var(--font-body)", fontSize: 13, color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-};
+
+  // Earned Achievements panel (T47)
+  achList:  { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column" as const, gap: 12 },
+  achItem:  { display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 14px", background: "var(--color-surface-02)", border: "1px solid var(--color-border)", borderRadius: 2 },
+  achIcon:  { fontSize: 20, lineHeight: 1, flexShrink: 0, marginTop: 2 },
+  achName:  { fontFamily: "var(--font-body)", fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)", margin: 0, marginBottom: 4 },
+  achMeta:  { fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.04em", color: "var(--color-text-disabled)", margin: 0 },};
