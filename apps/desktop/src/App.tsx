@@ -1,19 +1,53 @@
+import { useEffect }                              from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import AppLayout from "@/layouts/AppLayout";
-import LauncherPage from "@/pages/LauncherPage";
-import LibraryPage from "@/pages/LibraryPage";
+import { listen }                                  from "@tauri-apps/api/event";
+import AppLayout      from "@/layouts/AppLayout";
+import LauncherPage   from "@/pages/LauncherPage";
+import LibraryPage    from "@/pages/LibraryPage";
 import GameDetailPage from "@/pages/GameDetailPage";
-import AddGamePage from "@/pages/AddGamePage";
-import SettingsPage from "@/pages/SettingsPage";
+import AddGamePage    from "@/pages/AddGamePage";
+import SettingsPage   from "@/pages/SettingsPage";
 import OnboardingPage from "@/pages/OnboardingPage";
 import CollectionsPage from "@/pages/CollectionsPage";
-import JournalPage from "@/pages/JournalPage";
+import JournalPage    from "@/pages/JournalPage";
 import MilestonesPage from "@/pages/MilestonesPage";
-import IdentityPage    from "@/pages/IdentityPage";
-import EditGamePage    from "@/pages/EditGamePage";
-import ScanPage        from "@/pages/ScanPage";
+import IdentityPage   from "@/pages/IdentityPage";
+import EditGamePage   from "@/pages/EditGamePage";
+import ScanPage       from "@/pages/ScanPage";
+import { useToastStore } from "@/stores/useToastStore";
+
+/** Payload emitted by the Rust `process_changes` router (T41). */
+interface AchievementUnlockedPayload {
+  display_name: string;
+  points:       number;
+  steam_id:     string;
+  game_id:      string;
+  milestone_id: string;
+}
 
 export default function App() {
+  const { addToast } = useToastStore();
+
+  // Global achievement-unlocked listener (T46).
+  // Registered once at the App root so it survives route changes.
+  useEffect(() => {
+    const unlisten = listen<AchievementUnlockedPayload>(
+      "achievement-unlocked",
+      (event) => {
+        const { display_name, points } = event.payload;
+        addToast({
+          message: `\ud83c\udfc6 ${display_name} \u00b7 +${points} pts`,
+          type: "achievement",
+        });
+      },
+    );
+
+    // Clean up the listener when the component unmounts (hot-reload safety).
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [addToast]);
+
   return (
     <BrowserRouter>
       <Routes>

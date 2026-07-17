@@ -10,16 +10,30 @@ import { X, Check, AlertCircle, Info } from "lucide-react";
 import { useToastStore, type Toast, type ToastType } from "@/stores/useToastStore";
 
 const ICONS: Record<ToastType, React.ReactNode> = {
-  success: <Check       size={13} />,
-  error:   <AlertCircle size={13} />,
-  info:    <Info        size={13} />,
+  success:     <Check       size={13} />,
+  error:       <AlertCircle size={13} />,
+  info:        <Info        size={13} />,
+  achievement: <span aria-hidden="true">🏆</span>,
 };
 
+
 const TYPE_COLOR: Record<ToastType, React.CSSProperties> = {
-  success: { color: "var(--color-text-secondary)" },
-  error:   { color: "var(--color-text-muted)" },
-  info:    { color: "var(--color-text-disabled)" },
+  success:     { color: "var(--color-text-secondary)" },
+  error:       { color: "var(--color-text-muted)"     },
+  info:        { color: "var(--color-text-disabled)"  },
+  achievement: { color: "#fbbf24"                     },   // amber-400
 };
+
+/** Extra per-type overrides applied to the whole toast card. */
+const TYPE_CARD: Partial<Record<ToastType, React.CSSProperties>> = {
+  achievement: {
+    background:  "linear-gradient(135deg, #1e1040 0%, #2d1a6e 100%)",
+    borderColor: "#7c3aed",
+    color:       "#fff",
+    fontWeight:  600,
+  },
+};
+
 
 function ToastItem({ toast }: { toast: Toast }) {
   const { removeToast } = useToastStore();
@@ -27,7 +41,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 
   return (
     <div
-      style={styles.toast}
+      style={{ ...styles.toast, ...TYPE_CARD[type] }}
       role="status"
       aria-live="polite"
       aria-atomic="true"
