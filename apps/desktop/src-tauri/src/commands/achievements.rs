@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 use crate::db::DbState;
 use crate::steam_bridge::{
+    achievement_router,
     achievement_watcher::{start_watcher, stop_watcher, WatcherRegistry},
     dll_swap, steam_api,
 };
@@ -50,8 +51,11 @@ pub struct TrackingStatus {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Read the `app_data_dir` path from the settings table and return the
+/// Reads `app_data_dir` from the settings table and returns the
 /// absolute path to `pirate_harbor.db`.
+///
+/// **Precondition:** `lib.rs` `setup()` must have written the `app_data_dir` key
+/// at startup. See the T32 fix in `backup.rs`.
 fn resolve_db_path(conn: &rusqlite::Connection) -> Result<PathBuf, String> {
     let dir: String = conn
         .query_row(
@@ -96,19 +100,22 @@ pub async fn enable_achievement_tracking(
     // The watcher closure runs on a background thread owned by notify.
     // We pass the DB path so the closure can open its own connection,
     // avoiding the "can't clone a Mutex<Connection>" problem.
-    let gid       = game_id.clone();
-    let app_clone = app_handle.clone();
+    let gid        = game_id.clone();
+    let app_clone  = app_handle.clone();
+
+    // Create a fresh Arc per enable_achievement_tracking call so each game's
+    // watcher owns an independent state snapshot (M1 fix -- OnceLock was static
+    // and therefore shared across ALL closures in the process lifetime).
+    let state_mutex = std::sync::Arc::new(
+        Mutex::new(achievement_router::AchievementState::default())
+    );
 
     start_watcher(&registry, game_id, steam_app_id, move |json| {
-        use crate::steam_bridge::achievement_router;
-
-        // Each watcher instance keeps its own state snapshot.
-        // OnceLock initialises once per closure instance created by this call;
-        // a new OnceLock is created each time enable_achievement_tracking is
-        // called because the closure captures a fresh stack frame.
-        static STATE: std::sync::OnceLock<Mutex<achievement_router::AchievementState>> =
-            std::sync::OnceLock::new();
-        let state_mutex = STATE.get_or_init(|| Mutex::new(Default::default()));
+        // Each call to enable_achievement_tracking creates a fresh Arc so each
+        // game watcher owns an independent state snapshot.  The previous
+        // `static OnceLock` was shared across ALL closures (static = process-
+        // lifetime), meaning Game B's diff was wrongly anchored on Game A's
+        // last-known state (M1 fix).
         let mut old = state_mutex.lock().unwrap();
 
         // Open a per-call connection on this background thread.
@@ -119,6 +126,7 @@ pub async fn enable_achievement_tracking(
             *old = new_state;
         }
     })?;
+
 
     Ok(())
 }
@@ -276,11 +284,10 @@ pub async fn import_achievements_from_steam(
 
     let conn = db.0.lock().map_err(|_| "DB lock poisoned")?;
     let now  = Utc::now().to_rfc3339();
-    let mut inserted = Vec::new();
 
     for def in defs {
         let id = Uuid::new_v4().to_string();
-        let rows_changed = conn
+        conn
             .execute(
                 "INSERT OR IGNORE INTO steam_achievement_mappings
                  (id, game_id, steam_id, display_name, description, points, created_at)
@@ -288,21 +295,37 @@ pub async fn import_achievements_from_steam(
                 rusqlite::params![id, game_id, def.name, def.display_name, def.description, now],
             )
             .unwrap_or(0);
-
-        if rows_changed > 0 {
-            inserted.push(AchievementMapping {
-                id,
-                game_id:      game_id.clone(),
-                steam_id:     def.name,
-                display_name: def.display_name,
-                description:  def.description,
-                points:       10,
-                created_at:   now.clone(),
-            });
-        }
     }
 
-    Ok(inserted)
+    // Return the *full* list regardless of how many were newly inserted.
+    // Without this, a second click of "Import" would return an empty Vec and
+    // wipe the frontend mappings table (M3 fix).
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, game_id, steam_id, display_name, description, points, created_at
+             FROM steam_achievement_mappings
+             WHERE game_id = ?1
+             ORDER BY steam_id",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let all = stmt
+        .query_map(rusqlite::params![game_id], |r| {
+            Ok(AchievementMapping {
+                id:           r.get(0)?,
+                game_id:      r.get(1)?,
+                steam_id:     r.get(2)?,
+                display_name: r.get(3)?,
+                description:  r.get(4)?,
+                points:       r.get(5)?,
+                created_at:   r.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect::<Vec<_>>();
+
+    Ok(all)
 }
 
 // ── T43 — Steam App ID Auto-Detection ─────────────────────────────────────────

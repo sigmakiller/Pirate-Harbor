@@ -42,6 +42,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   return (
     <div
       style={{ ...styles.toast, ...TYPE_CARD[type] }}
+      className={type === "achievement" ? "toast-achievement" : undefined}
       role="status"
       aria-live="polite"
       aria-atomic="true"
