@@ -1,4 +1,4 @@
-/**
+﻿/**
  * api.ts — Typed Tauri invoke() wrappers.
  *
  * Every function here maps 1:1 to a Rust #[tauri::command] registered
@@ -669,7 +669,7 @@ export interface RecommendationResult {
   genre: string | null;
   developer: string | null;
   status: string;
-  /** Composite score 0.0�1.0 across all strategies. */
+  /** Composite score 0.0�1.0 across all strategies. */
   score: number;
   /** Human-readable reason for the recommendation. */
   reason: string;
@@ -705,8 +705,8 @@ export interface DailyPlaytime {
 }
 
 export interface HeatmapCell {
-  day_of_week: number;  // 0=Sun � 6=Sat
-  hour: number;         // 0�23
+  day_of_week: number;  // 0=Sun � 6=Sat
+  hour: number;         // 0�23
   sessions: number;
 }
 
@@ -802,12 +802,12 @@ export async function getMostPlayedGames(limit?: number): Promise<GamePlaytime[]
   return invoke<GamePlaytime[]>("get_most_played_games", { limit });
 }
 
-/** Daily playtime trend � last N days (default 30). */
+/** Daily playtime trend � last N days (default 30). */
 export async function getPlaytimeTrend(days?: number): Promise<DailyPlaytime[]> {
   return invoke<DailyPlaytime[]>("get_playtime_trend", { days });
 }
 
-/** 7�24 activity heatmap (all 168 cells, zeros included). */
+/** 7�24 activity heatmap (all 168 cells, zeros included). */
 export async function getActivityHeatmap(): Promise<ActivityHeatmap> {
   return invoke<ActivityHeatmap>("get_activity_heatmap");
 }
@@ -927,6 +927,15 @@ export async function restoreBackup(path: string): Promise<RestoreResult> {
 /** List all .phb backups in the default backup directory, newest first. */
 export async function listAutoBackups(): Promise<BackupInfo[]> {
   return invoke<BackupInfo[]>("list_auto_backups");
+}
+/** Returns whether the startup auto-backup job is enabled (default: true). */
+export async function getAutoBackupEnabled(): Promise<boolean> {
+  return invoke<boolean>("get_auto_backup_enabled");
+}
+
+/** Enable or disable the startup auto-backup job. */
+export async function setAutoBackupEnabled(enabled: boolean): Promise<void> {
+  return invoke<void>("set_auto_backup_enabled", { enabled });
 }
 
 // ── Diagnostics (T35) ─────────────────────────────────────────────────────────
