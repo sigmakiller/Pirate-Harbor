@@ -73,7 +73,51 @@ pub fn run() {
             // T41 Tauri commands (enable_achievement_tracking / disable_tracking).
             app.manage(WatcherRegistry::new());
 
+            // ── T49: Startup scheduled jobs ────────────────────────────────────
+            // Both jobs are idempotent — AutoBackupJob checks `is_auto_backup_due`
+            // internally, and MetadataRefreshJob skips if the RAWG key is absent.
+            {
+                // Open a short-lived connection just to read settings; the
+                // primary connection is already managed by DbState above.
+                if let Ok(cfg_conn) = db::init_db(&app_data_dir) {
+                    // Auto-backup — skipped when `auto_backup_enabled = "false"`.
+                    let enabled: bool = cfg_conn
+                        .query_row(
+                            "SELECT value FROM settings WHERE key = 'auto_backup_enabled'",
+                            [],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .ok()
+                        .map(|v| v != "false")
+                        .unwrap_or(true);
+
+                    if enabled {
+                        scheduler.enqueue_with_priority(
+                            commands::backup::AutoBackupJob {
+                                app_data_dir: app_data_dir.clone(),
+                            },
+                            background::Priority::Normal,
+                        );
+                    }
+
+                    // Metadata refresh — self-skips when api_key is None.
+                    let rawg_key: Option<String> = cfg_conn
+                        .query_row(
+                            "SELECT value FROM settings WHERE key = 'rawg_api_key'",
+                            [],
+                            |r| r.get(0),
+                        )
+                        .ok();
+
+                    scheduler.enqueue_with_priority(
+                        commands::metadata::MetadataRefreshJob { api_key: rawg_key },
+                        background::Priority::Normal,
+                    );
+                }
+            }
+
             Ok(())
+
         })
         .invoke_handler(tauri::generate_handler![
             // ── Game CRUD ─────────────────────────────────────────────────────
@@ -173,6 +217,8 @@ pub fn run() {
             commands::backup::create_backup,
             commands::backup::restore_backup,
             commands::backup::list_auto_backups,
+            commands::backup::get_auto_backup_enabled,
+            commands::backup::set_auto_backup_enabled,
             // ── Diagnostics (T35) ────────────────────────────────────────────────
             commands::diagnostics::get_diagnostics,
             commands::diagnostics::run_integrity_check,

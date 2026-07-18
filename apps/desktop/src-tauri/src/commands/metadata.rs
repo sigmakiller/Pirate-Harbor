@@ -1,4 +1,4 @@
-//! Metadata enrichment commands — T19.
+﻿//! Metadata enrichment commands — T19.
 //!
 //! Fetches game metadata from RAWG (primary) and IGDB (fallback) APIs,
 //! with local caching and background queue processing.
@@ -519,3 +519,99 @@ pub async fn download_game_images(
     })
 }
 
+// ─── T49: MetadataRefreshJob ──────────────────────────────────────────────────
+
+/// Background job that re-enriches games with stale or missing metadata cache.
+///
+/// A game is stale if its `metadata_cache` entry has expired (>30 days) or is
+/// absent entirely.  Scheduled once at startup with a 7-day interval; see
+/// `lib.rs` `setup()`.
+pub struct MetadataRefreshJob {
+    /// RAWG API key — captured at scheduling time from the settings table.
+    /// If `None`, the job exits immediately with a skip message.
+    pub api_key: Option<String>,
+}
+
+/// Age threshold in days after which a cache entry is considered stale.
+const STALE_DAYS: i64 = 30;
+
+impl crate::background::Job for MetadataRefreshJob {
+    fn name(&self) -> &str { "metadata_refresh" }
+
+    fn execute(&self, ctx: crate::background::JobContext) -> Result<crate::background::JobResult, String> {
+        use crate::background::{JobResult, JobProgressEvent, JobStatus};
+
+        let api_key = match &self.api_key {
+            Some(k) => k.clone(),
+            None    => return Ok(JobResult::ok(
+                "Skipped metadata refresh — RAWG API key not configured",
+            )),
+        };
+
+        let conn = ctx.db.lock().map_err(|_| "DB lock poisoned")?;
+
+        // Games whose cache is absent or expired.
+        let cutoff = (chrono::Utc::now() - Duration::days(STALE_DAYS)).to_rfc3339();
+        let mut stmt = conn.prepare(
+            "SELECT g.id, g.title
+             FROM games g
+             LEFT JOIN metadata_cache mc ON LOWER(mc.game_title) = LOWER(g.title)
+               AND mc.expires_at > ?1
+             WHERE mc.id IS NULL
+             ORDER BY g.added_at ASC",
+        ).map_err(|e| e.to_string())?;
+
+        let stale: Vec<(String, String)> = stmt
+            .query_map(rusqlite::params![cutoff], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(stmt);
+
+        if stale.is_empty() {
+            return Ok(JobResult::ok("All metadata is up to date"));
+        }
+
+        let total    = stale.len();
+        let mut refreshed = 0usize;
+        let mut skipped   = 0usize;
+
+        // MetadataRefreshJob runs on a spawn_blocking thread inside the async
+        // worker.  We use block_on to call the async RAWG fetch helper.
+        let rt = tokio::runtime::Handle::try_current()
+            .map_err(|_| "No Tokio runtime available in MetadataRefreshJob".to_string())?;
+
+        for (i, (game_id, title)) in stale.into_iter().enumerate() {
+            let _ = ctx.app_handle.emit("job-progress", JobProgressEvent {
+                job_id:   game_id.clone(),
+                job_name: "metadata_refresh".into(),
+                status:   JobStatus::Running { progress: i as f32 / total as f32 },
+                summary:  Some(format!("Refreshing {title}...")),
+            });
+
+            let fetch: Result<Vec<MetadataSearchResult>, String> =
+                rt.block_on(fetch_from_rawg(&api_key, &title));
+
+            match fetch {
+                Ok(results) if !results.is_empty() => {
+                    let first = &results[0];
+                    // Remove stale entry, insert fresh one.
+                    conn.execute(
+                        "DELETE FROM metadata_cache WHERE LOWER(game_title) = LOWER(?1)",
+                        rusqlite::params![title],
+                    ).ok();
+                    cache_metadata(&conn, &title, &first.provider, first.api_id, first).ok();
+                    refreshed += 1;
+                }
+                _ => { skipped += 1; }
+            }
+
+            // Respect RAWG rate limit (<=10 req/min => 6 s gap).
+            std::thread::sleep(std::time::Duration::from_secs(6));
+        }
+
+        Ok(JobResult::ok(format!(
+            "Metadata refresh: {refreshed} updated, {skipped} skipped (of {total} stale)"
+        )))
+    }
+}

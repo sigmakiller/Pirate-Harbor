@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SettingsPage — System Configuration.
  *
  * Design spec: Design/Pages/settings.md
@@ -29,6 +29,8 @@ import {
   runIntegrityCheck,
   cleanupOrphanAssets,
   rebuildSearchIndex,
+  getAutoBackupEnabled,
+  setAutoBackupEnabled as apiSetAutoBackupEnabled,
   type ScanResult,
   type DiagnosticsReport,
   type IntegrityResult,
@@ -65,6 +67,9 @@ export default function SettingsPage() {
   const [clearingCache,     setClearingCache]       = useState(false);
   const [rebuildingIndex,   setRebuildingIndex]    = useState(false);
   const [diagMsg,           setDiagMsg]            = useState<string | null>(null);
+  // -- T49: Auto-backup enabled -------------------------------------------
+  const [autoBackupEnabled, setAutoBackupEnabled_]  = useState<boolean>(true);
+
 
   const loadDiagnostics = useCallback(async () => {
     setDiagLoading(true);
@@ -84,6 +89,7 @@ export default function SettingsPage() {
     if (typeof savedKey === "string") setRawgKey(savedKey);
     // Load diagnostics
     loadDiagnostics();
+    getAutoBackupEnabled().then(setAutoBackupEnabled_).catch(() => {});
   }, [loadSettings, getSetting, loadDiagnostics]);
 
   const defaultView = (getSetting("default_view", "grid") as ViewMode) ?? "grid";
@@ -465,6 +471,30 @@ export default function SettingsPage() {
         </SettingRow>
       </Section>
 
+      {/* -- Section: Auto-Backup (T49) -- */}
+      <Section icon={<HardDrive size={14} />} title="Backups">
+        <SettingRow
+          label="Auto-backup on startup"
+          hint="Automatically create a .phb backup at launch based on your configured interval (daily/weekly/monthly)"
+        >
+          <button
+            id="auto-backup-enabled-toggle"
+            onClick={async () => {
+              const next = !autoBackupEnabled;
+              setAutoBackupEnabled_(next);
+              await apiSetAutoBackupEnabled(next).catch(() => setAutoBackupEnabled_(!next));
+            }}
+            style={{
+              
+              background: autoBackupEnabled ? "var(--accent)" : "var(--surface-raised)",
+              color: autoBackupEnabled ? "#fff" : "var(--text-muted)",
+            }}
+          >
+            {autoBackupEnabled ? "Enabled" : "Disabled"}
+          </button>
+        </SettingRow>
+      </Section>
+
       {/* ── Section: Storage (T35) ────────────────────────────────────────── */}
       <Section icon={<HardDrive size={14} />} title="Storage">
         <SettingRow label="Database file" hint="SQLite WAL database — pirate_harbor.db">
@@ -698,7 +728,7 @@ function ToggleBtn({
       aria-pressed={active}
       aria-label={ariaLabel}
       style={{
-        ...styles.toggleBtn,
+        
         ...(active ? styles.toggleBtnActive : {}),
       }}
     >

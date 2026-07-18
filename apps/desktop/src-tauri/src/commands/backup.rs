@@ -508,3 +508,24 @@ pub fn list_auto_backups(
     if !backup_dir.exists() { return Ok(vec![]); }
     Ok(list_backups_in_dir(&backup_dir))
 }
+
+// ─── T49: Auto-backup enabled setting ────────────────────────────────────────
+
+const SETTING_AUTO_BACKUP_ENABLED: &str = "auto_backup_enabled";
+
+/// Returns whether the startup auto-backup job is enabled (default: true).
+#[tauri::command]
+pub fn get_auto_backup_enabled(db: State<'_, DbState>) -> Result<bool, String> {
+    let conn = db.0.lock().map_err(|_| "DB lock poisoned")?;
+    let val = get_setting_val(&conn, SETTING_AUTO_BACKUP_ENABLED)
+        .unwrap_or_else(|| "true".to_string());
+    Ok(val != "false")
+}
+
+/// Enable or disable the startup auto-backup job.
+#[tauri::command]
+pub fn set_auto_backup_enabled(db: State<'_, DbState>, enabled: bool) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|_| "DB lock poisoned")?;
+    set_setting_val(&conn, SETTING_AUTO_BACKUP_ENABLED, if enabled { "true" } else { "false" });
+    Ok(())
+}
