@@ -228,6 +228,11 @@ export interface BulkEnrichmentQueued {
 export async function startBulkEnrichmentJob(): Promise<BulkEnrichmentQueued> {
   return invoke<BulkEnrichmentQueued>("start_bulk_enrichment_job");
 }
+/** T51: Returns count of games with absent or stale (>30d) metadata cache. */
+export async function getStaleGamesCount(): Promise<number> {
+  return invoke<number>("get_stale_games_count");
+}
+
 
 
 /**

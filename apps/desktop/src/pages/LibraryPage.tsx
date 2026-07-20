@@ -26,8 +26,9 @@ import {
 import { GameCard }        from "@/components/GameCard";
 import { GameListRow }     from "@/components/GameListRow";
 import { EnrichmentProgressBar } from "@/components/EnrichmentProgressBar";
+import { StaleBanner }          from "@/components/StaleBanner";
 import { GhostGrid }      from "@/components/SkeletonLoader";
-import { getAllGames, startBulkEnrichmentJob, cancelJob } from "@/lib/api";
+import { getAllGames, startBulkEnrichmentJob, cancelJob, getStaleGamesCount, getSetting, setSetting } from "@/lib/api";
 import { useLibraryStore } from "@/stores/useLibraryStore";
 import { useEnrichmentProgress } from "@/hooks/useEnrichmentProgress";
 import { useGridArrowNav } from "@/hooks/useGridArrowNav";
@@ -60,6 +61,11 @@ export default function LibraryPage() {
   const { progress, isActive: enrichmentActive, reset: resetEnrichment } = useEnrichmentProgress();
   const [enriching, setEnriching] = useState(false);
   const [activeJobId, setActiveJobId]   = useState<string | null>(null);
+
+  // -- T51: Stale-data banner --
+  const [staleCount,       setStaleCount]       = useState(0);
+  const [bannerVisible,    setBannerVisible]    = useState(false);
+  const [bannerRefreshing, setBannerRefreshing] = useState(false);
   const { addToast } = useToastStore();
 
   // ── UI state — from Zustand store (persists across navigation) ───────────────
@@ -107,6 +113,51 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(() => { loadGames(); }, [loadGames]);
+  // -- T51: Load stale count and decide whether to show banner ----------------
+  useEffect(() => {
+    const checkStale = async () => {
+      try {
+        // Respect 24-hour dismiss window.
+        const dismissedAt = await getSetting("stale_banner_dismissed_at");
+        if (dismissedAt) {
+          const dismissed = new Date(dismissedAt).getTime();
+          const hoursSince = (Date.now() - dismissed) / 1000 / 3600;
+          if (hoursSince < 24) return; // still within dismiss window
+        }
+        const count = await getStaleGamesCount();
+        if (count > 0) {
+          setStaleCount(count);
+          setBannerVisible(true);
+        }
+      } catch {
+        // Non-fatal — banner simply stays hidden.
+      }
+    };
+    checkStale();
+  }, []); // Run once per page mount (i.e. once per session navigation)
+
+  const handleBannerRefresh = async () => {
+    setBannerRefreshing(true);
+    try {
+      const queued = await startBulkEnrichmentJob();
+      setActiveJobId(queued.job_id);
+      addToast({ message: `Enriching ${queued.total} games in background...`, type: "info" });
+      setBannerVisible(false);
+    } catch (e) {
+      addToast({ message: `Could not start enrichment: ${e}`, type: "error" });
+    } finally {
+      setBannerRefreshing(false);
+    }
+  };
+
+  const handleBannerDismiss = async () => {
+    setBannerVisible(false);
+    try {
+      await setSetting("stale_banner_dismissed_at", new Date().toISOString());
+    } catch {
+      // Non-fatal.
+    }
+  };
 
   // Enrichment handler — T50: uses background job scheduler.
   const handleEnrichLibrary = async () => {
@@ -187,6 +238,16 @@ export default function LibraryPage() {
       {/* Progress bar */}
       {progress && enrichmentActive && (
         <EnrichmentProgressBar progress={progress} onDismiss={handleDismissEnrichment} />
+      )}
+
+      {/* T51: Stale-data notification banner */}
+      {bannerVisible && staleCount > 0 && (
+        <StaleBanner
+          count={staleCount}
+          onRefresh={handleBannerRefresh}
+          onDismiss={handleBannerDismiss}
+          refreshing={bannerRefreshing}
+        />
       )}
 
       {/* ── Page header ──────────────────────────────────────────────────── */}
