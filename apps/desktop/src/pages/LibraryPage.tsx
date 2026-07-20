@@ -1,4 +1,4 @@
-/**
+﻿/**
  * LibraryPage — the game archive.
  *
  * UI state is now managed by useLibraryStore (Zustand) so search/filter/view
@@ -27,7 +27,7 @@ import { GameCard }        from "@/components/GameCard";
 import { GameListRow }     from "@/components/GameListRow";
 import { EnrichmentProgressBar } from "@/components/EnrichmentProgressBar";
 import { GhostGrid }      from "@/components/SkeletonLoader";
-import { getAllGames, bulkEnrichLibrary }     from "@/lib/api";
+import { getAllGames, startBulkEnrichmentJob, cancelJob } from "@/lib/api";
 import { useLibraryStore } from "@/stores/useLibraryStore";
 import { useEnrichmentProgress } from "@/hooks/useEnrichmentProgress";
 import { useGridArrowNav } from "@/hooks/useGridArrowNav";
@@ -59,6 +59,7 @@ export default function LibraryPage() {
   // ── Enrichment ──────────────────────────────────────────────────────────────
   const { progress, isActive: enrichmentActive, reset: resetEnrichment } = useEnrichmentProgress();
   const [enriching, setEnriching] = useState(false);
+  const [activeJobId, setActiveJobId]   = useState<string | null>(null);
   const { addToast } = useToastStore();
 
   // ── UI state — from Zustand store (persists across navigation) ───────────────
@@ -107,17 +108,27 @@ export default function LibraryPage() {
 
   useEffect(() => { loadGames(); }, [loadGames]);
 
-  // Enrichment handler
+  // Enrichment handler — T50: uses background job scheduler.
   const handleEnrichLibrary = async () => {
     try {
       setEnriching(true);
-      await bulkEnrichLibrary();
-      addToast({ message: "Library enrichment started", type: "info" });
+      const queued = await startBulkEnrichmentJob();
+      setActiveJobId(queued.job_id);
+      addToast({ message: `Enriching ${queued.total} games in background…`, type: "info" });
     } catch (e) {
       addToast({ message: `Enrichment failed: ${e}`, type: "error" });
     } finally {
       setEnriching(false);
     }
+  };
+
+  // Cancel the active enrichment job and reset progress.
+  const handleDismissEnrichment = async () => {
+    if (activeJobId) {
+      await cancelJob(activeJobId).catch(() => {});
+      setActiveJobId(null);
+    }
+    resetEnrichment();
   };
 
   // Game update callback (favorites, etc.)
@@ -175,7 +186,7 @@ export default function LibraryPage() {
     <div className="atlas-enter" style={styles.page}>
       {/* Progress bar */}
       {progress && enrichmentActive && (
-        <EnrichmentProgressBar progress={progress} onDismiss={resetEnrichment} />
+        <EnrichmentProgressBar progress={progress} onDismiss={handleDismissEnrichment} />
       )}
 
       {/* ── Page header ──────────────────────────────────────────────────── */}
