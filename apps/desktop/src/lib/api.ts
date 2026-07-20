@@ -214,6 +214,21 @@ export async function getRawgApiKey(): Promise<string | null> {
 export async function bulkEnrichLibrary(): Promise<void> {
   return invoke<void>("bulk_enrich_library");
 }
+/** Queued result returned by startBulkEnrichmentJob. */
+export interface BulkEnrichmentQueued {
+  job_id: string;
+  total:  number;
+}
+
+/**
+ * Queue a batch RAWG enrichment job and return immediately (T50).
+ * Returns job_id for cancellation via cancelJob().
+ * Progress is emitted as 'metadata-enrichment-progress' events.
+ */
+export async function startBulkEnrichmentJob(): Promise<BulkEnrichmentQueued> {
+  return invoke<BulkEnrichmentQueued>("start_bulk_enrichment_job");
+}
+
 
 /**
  * Download and process game images (cover and background).

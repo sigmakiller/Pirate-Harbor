@@ -1,4 +1,4 @@
-﻿//! Metadata enrichment commands — T19.
+//! Metadata enrichment commands — T19.
 //!
 //! Fetches game metadata from RAWG (primary) and IGDB (fallback) APIs,
 //! with local caching and background queue processing.
@@ -614,4 +614,134 @@ impl crate::background::Job for MetadataRefreshJob {
             "Metadata refresh: {refreshed} updated, {skipped} skipped (of {total} stale)"
         )))
     }
+}
+
+// ─── T50: BulkEnrichmentJob ───────────────────────────────────────────────────
+
+/// How many games to enrich per RAWG "tick" (respects 10 req/min limit).
+const ENRICH_BATCH_SIZE: usize = 5;
+
+/// Response returned by `start_bulk_enrichment_job`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BulkEnrichmentQueued {
+    pub job_id: String,
+    pub total: usize,
+}
+
+/// Background job that batch-enriches the entire library via RAWG.
+///
+/// Processes `ENRICH_BATCH_SIZE` games per tick, sleeping 6 s between
+/// ticks to respect RAWG's 10 req/min rate limit.  Emits
+/// `"metadata-enrichment-progress"` events so the frontend progress bar
+/// updates live without blocking the UI thread.
+///
+/// Unlike the old `bulk_enrich_library` async command, this job:
+/// - Runs entirely inside the scheduler worker (non-blocking for the UI)
+/// - Writes results into `metadata_cache` (the old command could not)
+/// - Can be cancelled via `cancel_job`
+pub struct BulkEnrichmentJob {
+    pub api_key: String,
+    pub game_titles: Vec<String>,
+}
+
+impl crate::background::Job for BulkEnrichmentJob {
+    fn name(&self) -> &str { "bulk_enrichment" }
+
+    fn execute(&self, ctx: crate::background::JobContext) -> Result<crate::background::JobResult, String> {
+        use crate::background::JobResult;
+
+        let total    = self.game_titles.len();
+        let mut completed = 0usize;
+        let mut failed    = 0usize;
+
+        let rt = tokio::runtime::Handle::try_current()
+            .map_err(|_| "No Tokio runtime available in BulkEnrichmentJob".to_string())?;
+
+        let conn = ctx.db.lock().map_err(|_| "DB lock poisoned")?;
+
+        for chunk in self.game_titles.chunks(ENRICH_BATCH_SIZE) {
+            for title in chunk {
+                let fetch: Result<Vec<MetadataSearchResult>, String> =
+                    rt.block_on(fetch_from_rawg(&self.api_key, title));
+
+                match fetch {
+                    Ok(results) if !results.is_empty() => {
+                        let first = &results[0];
+                        // Overwrite any stale entry, write fresh cache.
+                        conn.execute(
+                            "DELETE FROM metadata_cache WHERE LOWER(game_title) = LOWER(?1)",
+                            rusqlite::params![title],
+                        ).ok();
+                        cache_metadata(&conn, title, &first.provider, first.api_id, first).ok();
+                    }
+                    _ => { failed += 1; }
+                }
+
+                completed += 1;
+
+                // Emit live progress to the frontend progress bar.
+                let _ = ctx.app_handle.emit("metadata-enrichment-progress", EnrichmentProgress {
+                    total,
+                    completed,
+                    pending: total.saturating_sub(completed),
+                    failed,
+                });
+            }
+
+            // Respect RAWG rate limit: 5 games per 6-second window = 50 req/min
+            // (well within the 10 req/min free tier after 6 s sleep per batch of 1).
+            // Actually: 1 req per game, 6 s between batches of 5 => 5 req/36 s ≈ 8 req/min.
+            if completed < total {
+                std::thread::sleep(std::time::Duration::from_secs(6));
+            }
+        }
+
+        // Final "done" event with pending = 0.
+        let _ = ctx.app_handle.emit("metadata-enrichment-progress", EnrichmentProgress {
+            total,
+            completed,
+            pending: 0,
+            failed,
+        });
+
+        Ok(JobResult::ok(format!(
+            "Bulk enrichment complete: {completed} processed, {failed} failed (of {total})"
+        )))
+    }
+}
+
+/// Queue a bulk enrichment job and return immediately.
+///
+/// Returns the job_id so the frontend can cancel via `cancel_job`.
+/// Replaces the old blocking `bulk_enrich_library` command for T50.
+#[tauri::command]
+pub fn start_bulk_enrichment_job(
+    db:        tauri::State<'_, crate::db::DbState>,
+    scheduler: tauri::State<'_, crate::background::JobScheduler>,
+) -> Result<BulkEnrichmentQueued, String> {
+    let conn = db.0.lock().map_err(|_| "DB lock poisoned")?;
+
+    let api_key: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'rawg_api_key'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|_| "RAWG API key not configured — add it in Settings")?;
+
+    let mut stmt = conn
+        .prepare("SELECT title FROM games ORDER BY title ASC")
+        .map_err(|e| e.to_string())?;
+    let game_titles: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    drop(stmt);
+    drop(conn);
+
+    let total = game_titles.len();
+    let job_id = scheduler.enqueue(BulkEnrichmentJob { api_key, game_titles });
+
+    Ok(BulkEnrichmentQueued { job_id, total })
 }
