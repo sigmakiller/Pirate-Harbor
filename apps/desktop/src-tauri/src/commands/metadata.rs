@@ -415,6 +415,26 @@ pub fn get_rawg_api_key(db_state: State<'_, DbState>) -> Result<Option<String>, 
     Ok(key)
 }
 
+/// T51: Return the count of games whose metadata cache is absent or older than
+/// 30 days.  Used by the stale-data notification banner in LibraryPage.
+#[tauri::command]
+pub fn get_stale_games_count(db_state: State<'_, DbState>) -> Result<usize, String> {
+    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let cutoff = (Utc::now() - Duration::days(STALE_DAYS)).to_rfc3339();
+    let count: usize = conn
+        .query_row(
+            "SELECT COUNT(*)
+             FROM games g
+             LEFT JOIN metadata_cache mc ON LOWER(mc.game_title) = LOWER(g.title)
+               AND mc.expires_at > ?1
+             WHERE mc.id IS NULL",
+            rusqlite::params![cutoff],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    Ok(count)
+}
+
 /// Download and process game images (cover and background).
 /// Emits 'image-download-progress' events during processing.
 #[tauri::command]
