@@ -862,6 +862,33 @@ export interface MonthlyPlaytime {
 export async function getMonthlyPlaytime(year: number): Promise<MonthlyPlaytime[]> {
   return invoke<MonthlyPlaytime[]>("get_monthly_playtime", { year });
 }
+// ─── T53: Identity heatmap + recent milestones ────────────────────────────────
+
+export interface DateHeatmapCell {
+  date:  string;  // "YYYY-MM-DD"
+  secs:  number;
+  count: number;
+}
+
+/** Last 365 days of session activity for the GitHub-style calendar heatmap. */
+export async function getDateHeatmap(): Promise<DateHeatmapCell[]> {
+  return invoke<DateHeatmapCell[]>("get_date_heatmap");
+}
+
+export interface RecentMilestone {
+  id:               string;
+  game_id:          string;
+  game_title:       string;
+  title:            string;
+  category:         string;
+  achievement_date: string;
+  points:           number;
+}
+
+/** Return the last `limit` milestones (default 20) with game titles. */
+export async function getRecentMilestones(limit?: number): Promise<RecentMilestone[]> {
+  return invoke<RecentMilestone[]>("get_recent_milestones", { limit });
+}
 
 /** Related games by genre/developer for Game Detail page. */
 export async function getRelatedGames(gameId: string, limit?: number): Promise<RelatedGame[]> {

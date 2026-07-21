@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { getAllGames, getJournalEntries, getGamingIdentity, type JournalEntry } from "@/lib/api";
+import { getAllGames, getJournalEntries, getGamingIdentity, getDateHeatmap, getRecentMilestones, type JournalEntry, type DateHeatmapCell, type RecentMilestone } from "@/lib/api";
 import { formatPlaytime, formatRelativeDate, STATUS_LABELS } from "@/lib/utils";
 import { GhostList } from "@/components/SkeletonLoader";
 import type { Game, GameStatus, GamingIdentity } from "@/types";
@@ -55,17 +55,24 @@ export default function IdentityPage() {
   const [entries,  setEntries]  = useState<JournalEntry[]>([]);
   const [identity, setIdentity] = useState<GamingIdentity | null>(null);
   const [loading,  setLoading]  = useState(true);
+  // T53
+  const [heatmap,    setHeatmap]    = useState<DateHeatmapCell[]>([]);
+  const [milestones, setMilestones] = useState<RecentMilestone[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [gs, es, id] = await Promise.all([
+    const [gs, es, id, hm, ms] = await Promise.all([
       getAllGames({}),
       getJournalEntries(null, 500),
       getGamingIdentity().catch(() => null), // Fallback to manual calculation if fails
+      getDateHeatmap().catch(() => []),
+      getRecentMilestones(20).catch(() => []),
     ]);
     setGames(gs);
     setEntries(es);
     setIdentity(id);
+    setHeatmap(hm);
+    setMilestones(ms);
     setLoading(false);
   }, []);
 
@@ -364,6 +371,22 @@ export default function IdentityPage() {
           </div>
         </section>
       </div>
+
+      {/* ─── T53-A: Activity Heatmap ─────────────────────────────────────────── */}
+      {heatmap.length > 0 ? (
+        <IdentityHeatmap cells={heatmap} />
+      ) : !loading && (
+        <section style={styles.heatmapSection} aria-label="Activity heatmap">
+          <p style={styles.sectionHeading}>Activity — Last 365 Days</p>
+          <div style={{ padding: "24px", color: "var(--color-text-disabled)", fontSize: 13, textAlign: "center" }}>
+            No sessions recorded yet. Start playing to see your activity heatmap.
+          </div>
+        </section>
+      )}
+
+      {/* ─── T53-B: Milestone Timeline ───────────────────────────────────────── */}
+      <IdentityMilestoneTimeline milestones={milestones} onNavigate={navigate} />
+
     </div>
   );
 }
@@ -419,6 +442,17 @@ const pillStyles = {
 // ── Page styles ───────────────────────────────────────────────────────────────
 
 const styles = {
+  heatmapSection: {
+    padding: "0 32px 8px",
+  },
+  sectionHeading: {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.1em",
+    color: "var(--color-text-disabled)",
+    textTransform: "uppercase" as const,
+    marginBottom: 10,
+  },
   loadingShell: {
     display:        "flex",
     alignItems:     "center",
@@ -886,3 +920,183 @@ const styles = {
     flexShrink:    0,
   },
 } satisfies Record<string, React.CSSProperties>;
+
+// ─── T53-A: Activity Heatmap (GitHub-style 52×7 calendar) ─────────────────────
+
+const INTENSITY = [
+  "var(--color-surface-raised, #1a1a24)",          // 0 - empty
+  "color-mix(in srgb, var(--color-accent, #6366f1) 25%, var(--color-surface))", // 1
+  "color-mix(in srgb, var(--color-accent, #6366f1) 50%, var(--color-surface))", // 2
+  "color-mix(in srgb, var(--color-accent, #6366f1) 75%, var(--color-surface))", // 3
+  "var(--color-accent, #6366f1)",                   // 4 - max
+];
+
+function secsToLevel(secs: number): 0 | 1 | 2 | 3 | 4 {
+  if (secs === 0) return 0;
+  if (secs < 1800)  return 1;   // < 30 min
+  if (secs < 7200)  return 2;   // < 2 h
+  if (secs < 14400) return 3;   // < 4 h
+  return 4;                     // >= 4 h
+}
+
+function buildCalendarGrid(cells: import("@/lib/api").DateHeatmapCell[]) {
+  const map: Record<string, { secs: number; count: number }> = {};
+  for (const c of cells) map[c.date] = { secs: c.secs, count: c.count };
+
+  // Start from 52 full weeks ago (Sunday)
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(today.getDate() - 364);
+  // Rewind to Sunday of that week
+  start.setDate(start.getDate() - start.getDay());
+
+  const weeks: { date: string; secs: number }[][] = [];
+  let cur = new Date(start);
+  while (cur <= today) {
+    const week: { date: string; secs: number }[] = [];
+    for (let d = 0; d < 7; d++) {
+      const iso = cur.toISOString().slice(0, 10);
+      const future = cur > today;
+      week.push({ date: iso, secs: future ? -1 : (map[iso]?.secs ?? 0) });
+      cur.setDate(cur.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+  return weeks;
+}
+
+function fmtTooltip(date: string, secs: number): string {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const label = h > 0 ? `${h}h ${m}m` : `${m}m`;
+  const d = new Date(date + "T12:00:00");
+  const fmt = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return secs > 0 ? `${label} · ${fmt}` : fmt;
+}
+
+function IdentityHeatmap({ cells }: { cells: import("@/lib/api").DateHeatmapCell[] }) {
+  const weeks = buildCalendarGrid(cells);
+  const cellSize = 12;
+  const gap = 2;
+
+  return (
+    <section style={{ padding: "0 32px 8px", maxWidth: 1100 }} aria-label="Activity heatmap — last 365 days">
+      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: "var(--color-text-disabled)", textTransform: "uppercase", marginBottom: 10 }}>
+        Activity — Last 365 Days
+      </p>
+      <div style={{ display: "flex", gap, alignItems: "flex-start", overflowX: "auto" }}>
+        {weeks.map((week, wi) => (
+          <div key={wi} style={{ display: "flex", flexDirection: "column", gap }}>
+            {week.map((day) => {
+              const level = day.secs < 0 ? 0 : secsToLevel(day.secs);
+              return (
+                <div
+                  key={day.date}
+                  title={day.secs >= 0 ? fmtTooltip(day.date, day.secs) : ""}
+                  style={{
+                    width:        cellSize,
+                    height:       cellSize,
+                    borderRadius: 2,
+                    background:   day.secs < 0 ? "transparent" : INTENSITY[level],
+                    cursor:       day.secs > 0 ? "default" : "default",
+                    transition:   "background 150ms",
+                  }}
+                  aria-label={day.secs >= 0 ? fmtTooltip(day.date, day.secs) : ""}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ─── T53-B: Milestone Timeline ─────────────────────────────────────────────────
+
+function groupByMonth(milestones: import("@/lib/api").RecentMilestone[]) {
+  const groups: Record<string, import("@/lib/api").RecentMilestone[]> = {};
+  for (const m of milestones) {
+    const d = new Date(m.achievement_date);
+    const key = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(m);
+  }
+  return Object.entries(groups);
+}
+
+const CATEGORY_ICON: Record<string, string> = {
+  milestone:  "🏆",
+  completion: "★",
+  achievement: "🎯",
+  personal:   "💎",
+};
+
+function IdentityMilestoneTimeline({
+  milestones,
+  onNavigate,
+}: {
+  milestones: import("@/lib/api").RecentMilestone[];
+  onNavigate: (path: string) => void;
+}) {
+  if (milestones.length === 0) return null;
+
+  const groups = groupByMonth(milestones);
+
+  return (
+    <section style={{ padding: "8px 32px 48px", maxWidth: 760 }} aria-label="Recent milestones">
+      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: "var(--color-text-disabled)", textTransform: "uppercase", marginBottom: 16 }}>
+        Recent Milestones
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+        {groups.map(([month, items]) => (
+          <div key={month}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 10, letterSpacing: "0.04em" }}>
+              {month}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {items.map((m) => {
+                const day = new Date(m.achievement_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                return (
+                  <button
+                    key={m.id}
+                    id={`milestone-timeline-${m.id}`}
+                    onClick={() => onNavigate(`/library/${m.game_id}`)}
+                    style={{
+                      display:        "flex",
+                      alignItems:     "center",
+                      gap:            10,
+                      background:     "none",
+                      border:         "none",
+                      cursor:         "pointer",
+                      padding:        "7px 10px",
+                      borderRadius:   6,
+                      textAlign:      "left",
+                      transition:     "background 150ms",
+                      width:          "100%",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-raised, #1e1e28)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  >
+                    <span style={{ width: 20, flexShrink: 0, fontSize: 14, textAlign: "center" }}>
+                      {CATEGORY_ICON[m.category] ?? "🏅"}
+                    </span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {m.title}
+                    </span>
+                    <span style={{ fontSize: 12, color: "var(--color-text-disabled)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      {m.game_title}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--color-text-disabled)", flexShrink: 0, fontFamily: "var(--font-mono, monospace)" }}>
+                      {day}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}

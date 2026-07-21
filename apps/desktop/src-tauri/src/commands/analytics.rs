@@ -185,3 +185,45 @@ pub fn get_monthly_playtime(
     full.sort_by_key(|r| r.month);
     Ok(full)
 }
+
+// ─── T53: Date-based heatmap (GitHub-style 365-day calendar) ─────────────────
+
+/// A single day's session summary for the calendar heatmap.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DateHeatmapCell {
+    pub date:   String,  // ISO-8601 date "YYYY-MM-DD"
+    pub secs:   i64,     // total playtime seconds that day
+    pub count:  i64,     // number of sessions that day
+}
+
+/// Return one `DateHeatmapCell` per day for the last 365 days.
+/// Days with no sessions are omitted (frontend fills gaps with zero).
+#[tauri::command]
+pub fn get_date_heatmap(db: State<'_, DbState>) -> Result<Vec<DateHeatmapCell>, String> {
+    let conn = db.0.lock().map_err(|_| "DB lock poisoned".to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT strftime('%Y-%m-%d', started_at) AS day,
+                    COALESCE(SUM(duration_secs), 0)  AS secs,
+                    COUNT(*)                          AS cnt
+             FROM sessions
+             WHERE started_at >= date('now', '-365 days')
+             GROUP BY day
+             ORDER BY day ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows: Vec<DateHeatmapCell> = stmt
+        .query_map([], |r| {
+            Ok(DateHeatmapCell {
+                date:  r.get(0)?,
+                secs:  r.get(1)?,
+                count: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(rows)
+}

@@ -176,6 +176,7 @@ pub fn run() {
             commands::milestones::seed_default_templates,
             commands::milestones::get_milestone_statistics,
             commands::milestones::migrate_journal_to_milestones,
+            commands::milestones::get_recent_milestones,     // T53
             // ── Identity ──────────────────────────────────────────────────────
             commands::identity::get_gaming_identity,
             // ── Background jobs ───────────────────────────────────────────────
@@ -213,6 +214,7 @@ pub fn run() {
             commands::analytics::get_related_games,
             commands::analytics::get_session_years,       // T52
             commands::analytics::get_monthly_playtime,    // T52
+            commands::analytics::get_date_heatmap,           // T53
             // ── Export (T32) ──────────────────────────────────────────────────────
             commands::export::get_export_preview,
             commands::export::export_library_json,
