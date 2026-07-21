@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IdentityPage — Player profile overview.
  *
  * Design spec: "Profile · Favorite genres · Runtime · Recent journeys ·
@@ -151,6 +151,31 @@ export default function IdentityPage() {
               <p style={styles.profileCaption}>Player Profile</p>
             </div>
           </div>
+
+          {/* T52: Year-in-Review link */}
+          <button
+            id="yir-nav-btn"
+            onClick={() => navigate("/identity/year-in-review")}
+            style={{
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "space-between",
+              width:          "100%",
+              background:     "color-mix(in srgb, var(--color-accent, #6366f1) 10%, var(--color-surface))",
+              border:         "1px solid color-mix(in srgb, var(--color-accent, #6366f1) 30%, transparent)",
+              borderRadius:   8,
+              padding:        "10px 14px",
+              color:          "var(--color-text-primary)",
+              fontSize:       13,
+              fontWeight:     600,
+              cursor:         "pointer",
+              marginBottom:   12,
+              transition:     "background 150ms",
+            }}
+          >
+            <span>📅 {new Date().getFullYear()} Year in Review</span>
+            <span style={{ color: "var(--color-accent, #6366f1)", fontSize: 16 }}>→</span>
+          </button>
 
           {/* Gaming Personality (if available) */}
           {identity?.gaming_personality && (

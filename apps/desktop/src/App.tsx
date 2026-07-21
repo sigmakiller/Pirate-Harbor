@@ -11,9 +11,10 @@ import OnboardingPage from "@/pages/OnboardingPage";
 import CollectionsPage from "@/pages/CollectionsPage";
 import JournalPage    from "@/pages/JournalPage";
 import MilestonesPage from "@/pages/MilestonesPage";
-import IdentityPage   from "@/pages/IdentityPage";
-import EditGamePage   from "@/pages/EditGamePage";
-import ScanPage       from "@/pages/ScanPage";
+import IdentityPage         from "@/pages/IdentityPage";
+import YearInReviewPage     from "@/pages/YearInReviewPage";
+import EditGamePage         from "@/pages/EditGamePage";
+import ScanPage             from "@/pages/ScanPage";
 import { useToastStore } from "@/stores/useToastStore";
 
 /** Payload emitted by the Rust `process_changes` router (T41). */
@@ -68,8 +69,9 @@ export default function App() {
           <Route path="/collections"         element={<CollectionsPage />} />
           <Route path="/journal"             element={<JournalPage />} />
           <Route path="/milestones"          element={<MilestonesPage />} />
-          <Route path="/identity"            element={<IdentityPage />} />
-          <Route path="/settings"            element={<SettingsPage />} />
+          <Route path="/identity"                    element={<IdentityPage />} />
+          <Route path="/identity/year-in-review"      element={<YearInReviewPage />} />
+          <Route path="/settings"                     element={<SettingsPage />} />
         </Route>
 
         {/* Catch-all fallback */}
