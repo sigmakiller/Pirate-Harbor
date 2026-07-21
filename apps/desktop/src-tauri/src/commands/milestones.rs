@@ -498,3 +498,57 @@ pub fn migrate_journal_to_milestones(db_state: State<'_, DbState>) -> Result<usi
 
     Ok(inserted)
 }
+
+// ─── T53: Recent milestones with game title ───────────────────────────────────
+
+/// A milestone row enriched with the parent game's title for timeline display.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RecentMilestone {
+    pub id:               String,
+    pub game_id:          String,
+    pub game_title:       String,
+    pub title:            String,
+    pub category:         String,
+    pub achievement_date: String,
+    pub points:           i64,
+}
+
+/// Return the last `limit` milestones (default 20), joined with their game
+/// title for display in the milestone timeline on IdentityPage.
+#[tauri::command]
+pub fn get_recent_milestones(
+    db:    tauri::State<'_, crate::db::DbState>,
+    limit: Option<usize>,
+) -> Result<Vec<RecentMilestone>, String> {
+    let conn = db.0.lock().map_err(|_| "DB lock poisoned")?;
+    let lim  = limit.unwrap_or(20).min(100) as i64;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT m.id, m.game_id, COALESCE(g.title, 'Unknown Game') AS game_title,
+                    m.title, m.category, m.achievement_date, m.points
+             FROM milestones m
+             LEFT JOIN games g ON g.id = m.game_id
+             ORDER BY m.achievement_date DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows: Vec<RecentMilestone> = stmt
+        .query_map(rusqlite::params![lim], |r| {
+            Ok(RecentMilestone {
+                id:               r.get(0)?,
+                game_id:          r.get(1)?,
+                game_title:       r.get(2)?,
+                title:            r.get(3)?,
+                category:         r.get(4)?,
+                achievement_date: r.get(5)?,
+                points:           r.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(rows)
+}
