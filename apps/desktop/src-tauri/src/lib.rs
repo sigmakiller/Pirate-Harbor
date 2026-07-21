@@ -211,6 +211,8 @@ pub fn run() {
             commands::analytics::get_completion_stats,
             commands::analytics::get_year_in_review,
             commands::analytics::get_related_games,
+            commands::analytics::get_session_years,       // T52
+            commands::analytics::get_monthly_playtime,    // T52
             // ── Export (T32) ──────────────────────────────────────────────────────
             commands::export::get_export_preview,
             commands::export::export_library_json,

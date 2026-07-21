@@ -846,6 +846,22 @@ export async function getCompletionStats(): Promise<CompletionStats> {
 export async function getYearInReview(year?: number): Promise<YearInReview> {
   return invoke<YearInReview>("get_year_in_review", { year });
 }
+// ── T52: Year-in-Review support ─────────────────────────────────────────────
+
+/** Returns distinct years (descending) that have ≥1 session recorded. */
+export async function getSessionYears(): Promise<number[]> {
+  return invoke<number[]>("get_session_years");
+}
+
+export interface MonthlyPlaytime {
+  month: number;  // 1-12
+  secs:  number;
+}
+
+/** Returns 12 MonthlyPlaytime entries (months 1-12) for the given year. */
+export async function getMonthlyPlaytime(year: number): Promise<MonthlyPlaytime[]> {
+  return invoke<MonthlyPlaytime[]>("get_monthly_playtime", { year });
+}
 
 /** Related games by genre/developer for Game Detail page. */
 export async function getRelatedGames(gameId: string, limit?: number): Promise<RelatedGame[]> {

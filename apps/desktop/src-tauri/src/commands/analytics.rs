@@ -114,3 +114,74 @@ pub fn get_related_games(
     let conn = db.0.lock().map_err(|_| "DB lock poisoned".to_string())?;
     game_lookup::find_related_games(&conn, &game_id, limit.unwrap_or(8).min(20))
 }
+
+// ── T52: Year-in-Review support ───────────────────────────────────────────────
+
+/// Returns the distinct years (desc) that have at least one session recorded.
+/// Used by YearInReviewPage to build the year selector and pick the default.
+#[tauri::command]
+pub fn get_session_years(db: State<'_, DbState>) -> Result<Vec<i32>, String> {
+    let conn = db.0.lock().map_err(|_| "DB lock poisoned".to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT CAST(strftime('%Y', started_at) AS INTEGER) AS yr
+             FROM sessions
+             ORDER BY yr DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let years: Vec<i32> = stmt
+        .query_map([], |r| r.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(years)
+}
+
+/// Monthly playtime breakdown for a given year.
+/// Returns 12 entries (month 1-12) with total seconds played that month.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MonthlyPlaytime {
+    pub month: i32,   // 1-12
+    pub secs:  i64,
+}
+
+#[tauri::command]
+pub fn get_monthly_playtime(
+    db:   State<'_, DbState>,
+    year: i32,
+) -> Result<Vec<MonthlyPlaytime>, String> {
+    let conn      = db.0.lock().map_err(|_| "DB lock poisoned".to_string())?;
+    let year_start = format!("{}-01-01", year);
+    let year_end   = format!("{}-12-31 23:59:59", year);
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT CAST(strftime('%m', started_at) AS INTEGER) AS month,
+                    COALESCE(SUM(duration_secs), 0) AS secs
+             FROM sessions
+             WHERE started_at BETWEEN ?1 AND ?2
+             GROUP BY month
+             ORDER BY month ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows: Vec<MonthlyPlaytime> = stmt
+        .query_map(rusqlite::params![year_start, year_end], |r| {
+            Ok(MonthlyPlaytime { month: r.get(0)?, secs: r.get(1)? })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Fill in months with zero playtime so the frontend always gets 12 entries.
+    let mut full: Vec<MonthlyPlaytime> = (1..=12)
+        .map(|m| {
+            rows.iter()
+                .find(|r| r.month == m)
+                .cloned()
+                .unwrap_or(MonthlyPlaytime { month: m, secs: 0 })
+        })
+        .collect();
+    full.sort_by_key(|r| r.month);
+    Ok(full)
+}
