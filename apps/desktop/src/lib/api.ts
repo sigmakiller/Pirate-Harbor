@@ -889,6 +889,20 @@ export interface RecentMilestone {
 export async function getRecentMilestones(limit?: number): Promise<RecentMilestone[]> {
   return invoke<RecentMilestone[]>("get_recent_milestones", { limit });
 }
+// ─── T54: Milestone streak stats ──────────────────────────────────────────────
+
+export interface MilestoneStreakStats {
+  current_streak_days: number;
+  longest_streak_days: number;
+  total_milestones:    number;
+  this_month:          number;
+  this_week:           number;
+}
+
+/** T54: Returns milestone streak and activity stats for the Identity page card. */
+export async function getMilestoneStreakStats(): Promise<MilestoneStreakStats> {
+  return invoke<MilestoneStreakStats>("get_milestone_streak_stats");
+}
 
 /** Related games by genre/developer for Game Detail page. */
 export async function getRelatedGames(gameId: string, limit?: number): Promise<RelatedGame[]> {

@@ -227,3 +227,15 @@ pub fn get_date_heatmap(db: State<'_, DbState>) -> Result<Vec<DateHeatmapCell>, 
 
     Ok(rows)
 }
+
+// ─── T54: Milestone streak stats ──────────────────────────────────────────────
+
+/// T54: Return milestone streak statistics for the Identity page "Milestone
+/// Activity" card.  Calls the streak engine in `analytics::milestones`.
+#[tauri::command]
+pub fn get_milestone_streak_stats(
+    db: State<'_, DbState>,
+) -> Result<crate::analytics::milestones::MilestoneStreakStats, String> {
+    let conn = db.0.lock().map_err(|_| "DB lock poisoned".to_string())?;
+    crate::analytics::milestones::build_milestone_streak_stats(&conn)
+}

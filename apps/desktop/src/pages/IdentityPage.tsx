@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { getAllGames, getJournalEntries, getGamingIdentity, getDateHeatmap, getRecentMilestones, type JournalEntry, type DateHeatmapCell, type RecentMilestone } from "@/lib/api";
+import { getAllGames, getJournalEntries, getGamingIdentity, getDateHeatmap, getRecentMilestones, getMilestoneStreakStats, type JournalEntry, type DateHeatmapCell, type RecentMilestone, type MilestoneStreakStats } from "@/lib/api";
 import { formatPlaytime, formatRelativeDate, STATUS_LABELS } from "@/lib/utils";
 import { GhostList } from "@/components/SkeletonLoader";
 import type { Game, GameStatus, GamingIdentity } from "@/types";
@@ -58,21 +58,24 @@ export default function IdentityPage() {
   // T53
   const [heatmap,    setHeatmap]    = useState<DateHeatmapCell[]>([]);
   const [milestones, setMilestones] = useState<RecentMilestone[]>([]);
+  const [streakStats, setStreakStats] = useState<MilestoneStreakStats | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [gs, es, id, hm, ms] = await Promise.all([
+    const [gs, es, id, hm, ms, ss] = await Promise.all([
       getAllGames({}),
       getJournalEntries(null, 500),
       getGamingIdentity().catch(() => null), // Fallback to manual calculation if fails
       getDateHeatmap().catch(() => []),
       getRecentMilestones(20).catch(() => []),
+      getMilestoneStreakStats().catch(() => null),
     ]);
     setGames(gs);
     setEntries(es);
     setIdentity(id);
     setHeatmap(hm);
     setMilestones(ms);
+    setStreakStats(ss);
     setLoading(false);
   }, []);
 
@@ -278,6 +281,11 @@ export default function IdentityPage() {
             </div>
           ))}
         </section>
+
+        {/* T54: Milestone Activity card */}
+        {streakStats && streakStats.total_milestones > 0 && (
+          <MilestoneActivityCard stats={streakStats} />
+        )}
       </div>
 
       {/* ── Right column ─────────────────────────────────────────────────────── */}
@@ -370,6 +378,11 @@ export default function IdentityPage() {
             ))}
           </div>
         </section>
+
+        {/* T54: Milestone Activity card */}
+        {streakStats && streakStats.total_milestones > 0 && (
+          <MilestoneActivityCard stats={streakStats} />
+        )}
       </div>
 
       {/* ─── T53-A: Activity Heatmap ─────────────────────────────────────────── */}
@@ -1097,6 +1110,87 @@ function IdentityMilestoneTimeline({
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+// ─── T54: Milestone Activity Card ─────────────────────────────────────────────
+
+function MilestoneActivityCard({
+  stats,
+}: {
+  stats: import("@/lib/api").MilestoneStreakStats;
+}) {
+  const rows: [string, string][] = [
+    ["Current Streak", stats.current_streak_days === 1 ? "1 day" : `${stats.current_streak_days} days`],
+    ["Longest Streak", stats.longest_streak_days === 1 ? "1 day" : `${stats.longest_streak_days} days`],
+    ["This Week",      String(stats.this_week)],
+    ["This Month",     String(stats.this_month)],
+    ["All Time",       String(stats.total_milestones)],
+  ];
+
+  return (
+    <section
+      style={{
+        background:   "var(--color-surface-raised)",
+        border:       "1px solid var(--color-border)",
+        borderRadius: 12,
+        padding:      "16px 18px",
+        marginTop:    16,
+      }}
+      aria-label="Milestone activity"
+    >
+      <p
+        style={{
+          fontSize:      11,
+          fontWeight:    700,
+          letterSpacing: "0.1em",
+          color:         "var(--color-text-disabled)",
+          textTransform: "uppercase",
+          marginBottom:  14,
+        }}
+      >
+        Milestone Activity
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {rows.map(([label, value]) => (
+          <div
+            key={label}
+            style={{
+              display:        "flex",
+              justifyContent: "space-between",
+              alignItems:     "center",
+            }}
+          >
+            <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
+              {label}
+            </span>
+            <span
+              style={{
+                fontSize:   14,
+                fontWeight: 700,
+                color:
+                  label === "Current Streak" && stats.current_streak_days > 0
+                    ? "var(--color-accent)"
+                    : "var(--color-text-primary)",
+              }}
+            >
+              {value}
+            </span>
+          </div>
+        ))}
+      </div>
+      {stats.current_streak_days > 0 && (
+        <div
+          style={{
+            marginTop:    14,
+            fontSize:     11,
+            color:        "var(--color-text-disabled)",
+            textAlign:    "center",
+          }}
+        >
+          🔥 Keep it going!
+        </div>
+      )}
     </section>
   );
 }

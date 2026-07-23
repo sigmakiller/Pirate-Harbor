@@ -359,3 +359,223 @@ fn calculate_timeline(
 
     Ok(timeline)
 }
+
+// ─── T54: Milestone Streak Engine ─────────────────────────────────────────────
+
+/// Aggregated streak and activity stats for milestone achievements.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MilestoneStreakStats {
+    /// Consecutive days (ending today or yesterday) with ≥1 milestone.
+    pub current_streak_days: i32,
+    /// All-time longest streak in days.
+    pub longest_streak_days: i32,
+    /// Total milestones ever recorded.
+    pub total_milestones: i32,
+    /// Milestones earned in the current calendar month.
+    pub this_month: i32,
+    /// Milestones earned in the current calendar week (Mon–Sun).
+    pub this_week: i32,
+}
+
+/// Build milestone streak statistics from the `milestones` table.
+///
+/// The current streak counts backward from today: if a milestone exists today
+/// the streak starts today; otherwise it can still be alive if yesterday had
+/// one. The streak breaks on the first calendar day with no milestone.
+pub fn build_milestone_streak_stats(
+    conn: &rusqlite::Connection,
+) -> Result<MilestoneStreakStats, String> {
+    use chrono::{Datelike, Local, Duration};
+
+    // ── Total ─────────────────────────────────────────────────────────────────
+    let total_milestones: i32 = conn
+        .query_row("SELECT COUNT(*) FROM milestones", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    let today = Local::now().date_naive();
+
+    // ── This week (Mon–Sun) ────────────────────────────────────────────────────
+    // weekday() is Mon=0..Sun=6 in chrono
+    let days_since_mon = today.weekday().num_days_from_monday() as i64;
+    let week_start = today - Duration::days(days_since_mon);
+    let week_start_str = week_start.format("%Y-%m-%d").to_string();
+    let week_end_str   = today.format("%Y-%m-%d").to_string();
+
+    let this_week: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM milestones
+             WHERE DATE(achievement_date) BETWEEN ?1 AND ?2",
+            rusqlite::params![week_start_str, week_end_str],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    // ── This month ─────────────────────────────────────────────────────────────
+    let month_start_str = format!("{}-{:02}-01", today.year(), today.month());
+
+    let this_month: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM milestones
+             WHERE DATE(achievement_date) BETWEEN ?1 AND ?2",
+            rusqlite::params![month_start_str, week_end_str],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    // ── Streak calculation ─────────────────────────────────────────────────────
+    // Fetch all distinct dates that have ≥1 milestone, newest first.
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT DATE(achievement_date) AS d
+             FROM milestones
+             ORDER BY d DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let dates: Vec<chrono::NaiveDate> = stmt
+        .query_map([], |r| {
+            let s: String = r.get(0)?;
+            Ok(s)
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .filter_map(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
+        .collect();
+
+    // Current streak: walk backward from today
+    let mut current_streak_days: i32 = 0;
+    if !dates.is_empty() {
+        // Allow the streak to start from today OR yesterday
+        let anchor = if dates[0] == today {
+            today
+        } else if dates[0] == today - Duration::days(1) {
+            today - Duration::days(1)
+        } else {
+            // Most recent milestone was before yesterday → streak is 0
+            chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()
+        };
+
+        let date_set: std::collections::HashSet<chrono::NaiveDate> =
+            dates.iter().cloned().collect();
+
+        let mut cursor = anchor;
+        while date_set.contains(&cursor) {
+            current_streak_days += 1;
+            match cursor.checked_sub_signed(Duration::days(1)) {
+                Some(prev) => cursor = prev,
+                None => break,
+            }
+        }
+    }
+
+    // Longest streak: sliding window over sorted dates
+    let mut longest_streak_days: i32 = 0;
+    if !dates.is_empty() {
+        // dates is DESC; we need ASC for the window walk
+        let mut asc: Vec<chrono::NaiveDate> = dates.clone();
+        asc.sort();
+        asc.dedup();
+
+        let mut run = 1i32;
+        for i in 1..asc.len() {
+            if asc[i] == asc[i - 1] + Duration::days(1) {
+                run += 1;
+            } else {
+                longest_streak_days = longest_streak_days.max(run);
+                run = 1;
+            }
+        }
+        longest_streak_days = longest_streak_days.max(run);
+    }
+
+    Ok(MilestoneStreakStats {
+        current_streak_days,
+        longest_streak_days,
+        total_milestones,
+        this_month,
+        this_week,
+    })
+}
+
+// ─── T54 unit tests ───────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod streak_tests {
+    use super::*;
+    use crate::db::migrations::run_migrations;
+    use rusqlite::Connection;
+    use chrono::{Local, Duration};
+
+    fn setup() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        // Seed a game
+        conn.execute(
+            "INSERT INTO games (id, title, status, exe_path, added_at)
+             VALUES ('g1', 'Test Game', 'playing', '', '2025-01-01T00:00:00')",
+            [],
+        ).unwrap();
+        conn
+    }
+
+    fn insert_milestone(conn: &Connection, date: &str) {
+        conn.execute(
+            "INSERT INTO milestones (id, game_id, title, category, achievement_date, points, created_at, updated_at)
+             VALUES (lower(hex(randomblob(16))), 'g1', 'Test', 'milestone', ?1, 10, ?1, ?1)",
+            rusqlite::params![format!("{}T12:00:00", date)],
+        ).unwrap();
+    }
+
+    #[test]
+    fn empty_db_returns_zeroes() {
+        let conn = setup();
+        let stats = build_milestone_streak_stats(&conn).unwrap();
+        assert_eq!(stats.total_milestones,     0);
+        assert_eq!(stats.current_streak_days,  0);
+        assert_eq!(stats.longest_streak_days,  0);
+        assert_eq!(stats.this_week,            0);
+        assert_eq!(stats.this_month,           0);
+    }
+
+    #[test]
+    fn streak_resets_when_no_milestone_yesterday() {
+        let conn = setup();
+        // Insert a milestone 2 days ago (not yesterday, not today)
+        let two_ago = (Local::now().date_naive() - Duration::days(2))
+            .format("%Y-%m-%d").to_string();
+        insert_milestone(&conn, &two_ago);
+        let stats = build_milestone_streak_stats(&conn).unwrap();
+        assert_eq!(stats.current_streak_days, 0, "streak must be 0 — gap before yesterday");
+    }
+
+    #[test]
+    fn consecutive_days_produce_correct_streak() {
+        let conn = setup();
+        let today = Local::now().date_naive();
+        for i in 0..5i64 {
+            let d = (today - Duration::days(i)).format("%Y-%m-%d").to_string();
+            insert_milestone(&conn, &d);
+        }
+        let stats = build_milestone_streak_stats(&conn).unwrap();
+        assert_eq!(stats.current_streak_days, 5);
+        assert_eq!(stats.longest_streak_days, 5);
+    }
+
+    #[test]
+    fn longest_streak_detected_in_historical_data() {
+        let conn = setup();
+        let today = Local::now().date_naive();
+        // Historical run of 7 (a month ago)
+        for i in 0..7i64 {
+            let d = (today - Duration::days(30 + i)).format("%Y-%m-%d").to_string();
+            insert_milestone(&conn, &d);
+        }
+        // Current run of 2
+        insert_milestone(&conn, &today.format("%Y-%m-%d").to_string());
+        insert_milestone(&conn, &(today - Duration::days(1)).format("%Y-%m-%d").to_string());
+
+        let stats = build_milestone_streak_stats(&conn).unwrap();
+        assert_eq!(stats.longest_streak_days, 7, "7-day historical streak should win");
+        assert_eq!(stats.current_streak_days, 2);
+    }
+}
