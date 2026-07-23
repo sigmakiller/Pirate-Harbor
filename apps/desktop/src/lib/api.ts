@@ -1183,3 +1183,19 @@ export async function detectSteamAppId(
 ): Promise<AppIdDetectionResult> {
   return invoke<AppIdDetectionResult>('detect_steam_app_id', { gameId, gameDir });
 }
+
+// ─── T55: Updater ─────────────────────────────────────────────────────────────
+
+export interface UpdateCheckResult {
+  available: boolean;
+  version:   string | null;
+  notes:     string | null;
+}
+
+/**
+ * T55: Check the GitHub Releases endpoint for a newer version of Pirate Harbor.
+ * Returns `available: false` (never throws) when up-to-date or unreachable.
+ */
+export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>("check_for_updates");
+}

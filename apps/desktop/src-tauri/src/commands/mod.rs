@@ -1,4 +1,4 @@
-pub mod achievements;
+﻿pub mod achievements;
 pub mod analytics;
 pub mod assets;
 pub mod background;
@@ -17,3 +17,4 @@ pub mod scanner;
 pub mod search;
 pub mod sessions;
 pub mod settings;
+pub mod updater;  // T55
