@@ -1,0 +1,11 @@
+﻿{
+  "version": "0.1.0",
+  "notes": "Initial beta release of Pirate Harbor — your offline game library manager.",
+  "pub_date": "2026-07-23T15:55:23Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://github.com/sigmakiller/Pirate-Harbor/releases/download/v0.1.0/Pirate-Harbor_0.1.0_x64-setup.exe"
+    }
+  }
+}

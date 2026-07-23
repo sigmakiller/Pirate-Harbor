@@ -26,6 +26,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())  // T55
         .setup(|app| {
             // ── Database ──────────────────────────────────────────────────────
             let app_data_dir = app
@@ -240,6 +241,8 @@ pub fn run() {
             commands::achievements::import_achievements_from_steam,
             // ── Steam App ID detection (T43) ──────────────────────────────────────
             commands::achievements::detect_steam_app_id,
+            // ── Updater (T55) ─────────────────────────────────────────────────────
+            commands::updater::check_for_updates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
