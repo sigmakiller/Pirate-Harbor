@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SettingsPage — System Configuration.
  *
  * Design spec: Design/Pages/settings.md
@@ -31,9 +31,11 @@ import {
   rebuildSearchIndex,
   getAutoBackupEnabled,
   setAutoBackupEnabled as apiSetAutoBackupEnabled,
+  checkForUpdates,
   type ScanResult,
   type DiagnosticsReport,
   type IntegrityResult,
+  type UpdateCheckResult,
 } from "@/lib/api";
 import type { ViewMode }      from "@/stores/useLibraryStore";
 import type { NewGame }       from "@/types";
@@ -70,6 +72,10 @@ export default function SettingsPage() {
   // -- T49: Auto-backup enabled -------------------------------------------
   const [autoBackupEnabled, setAutoBackupEnabled_]  = useState<boolean>(true);
 
+  // ── T57: Update check state ─────────────────────────────────────────────────
+  const [updateResult,   setUpdateResult]   = useState<UpdateCheckResult | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [changelog,      setChangelog]      = useState<string | null>(null);
 
   const loadDiagnostics = useCallback(async () => {
     setDiagLoading(true);
@@ -93,6 +99,30 @@ export default function SettingsPage() {
   }, [loadSettings, getSetting, loadDiagnostics]);
 
   const defaultView = (getSetting("default_view", "grid") as ViewMode) ?? "grid";
+
+  // ── T57: Update check handlers ─────────────────────────────────────────────
+  const handleCheckForUpdates = async () => {
+    setUpdateChecking(true);
+    setUpdateResult(null);
+    try {
+      const result = await checkForUpdates();
+      setUpdateResult(result);
+      // Also try to fetch changelog from the releases endpoint
+      try {
+        const resp = await fetch(
+          "https://raw.githubusercontent.com/sigmakiller/Pirate-Harbor/main/releases/latest.json"
+        );
+        if (resp.ok) {
+          const data = await resp.json() as { notes?: string; version?: string };
+          setChangelog(data.notes ?? null);
+        }
+      } catch { /* offline / CORS — ignore */ }
+    } catch {
+      setUpdateResult({ available: false, version: null, notes: null });
+    } finally {
+      setUpdateChecking(false);
+    }
+  };
 
   // ── Scan directory handlers ────────────────────────────────────────────────
   const handleAddDirectory = async () => {
@@ -618,19 +648,80 @@ export default function SettingsPage() {
         </SettingRow>
       </Section>
 
-      {/* ── Section: Updates (T35 placeholder) ──────────────────────────── */}
-      <Section icon={<Zap size={14} />} title="Updates">
+      {/* ── Section: Updates (T57) ───────────────────────────────────────── */}
+      <Section id="updates" icon={<Zap size={14} />} title="Updates">
         <SettingRow label="Current version">
           <span style={styles.valueMono}>v{APP_VERSION}</span>
         </SettingRow>
-        <SettingRow label="Check for updates" hint="Automatic update checks — coming in Phase 5">
-          <button id="check-updates-btn" disabled style={{ ...styles.actionBtn, opacity: 0.4, cursor: "not-allowed" }}>
-            Check for Updates
+
+        <SettingRow
+          label="Status"
+          hint={
+            updateResult === null
+              ? "Click \u0022Check Now\u0022 to query GitHub Releases"
+              : updateResult.available
+              ? `v${updateResult.version} is available`
+              : "You are on the latest version"
+          }
+        >
+          <button
+            id="check-updates-btn"
+            onClick={handleCheckForUpdates}
+            disabled={updateChecking}
+            style={{
+              ...styles.actionBtn,
+              ...(updateChecking ? { opacity: 0.5, cursor: "not-allowed" } : {}),
+            }}
+          >
+            {updateChecking ? "Checking…" : "Check Now"}
           </button>
         </SettingRow>
+
+        {updateResult !== null && (
+          <SettingRow label="Result">
+            <span
+              style={{
+                ...styles.valueMono,
+                color: updateResult.available
+                  ? "var(--color-accent, #6366f1)"
+                  : "var(--color-text-secondary)",
+              }}
+            >
+              {updateResult.available
+                ? `✦ v${updateResult.version} available`
+                : "✓ Up to date"}
+            </span>
+          </SettingRow>
+        )}
+
         <SettingRow label="Update channel">
-          <span style={{ ...styles.valueMono, opacity: 0.5 }}>stable — Phase 5</span>
+          <span style={styles.valueMono}>stable · GitHub Releases</span>
         </SettingRow>
+
+        {/* Changelog — fetched from releases/latest.json */}
+        {changelog && (
+          <SettingRow label="Changelog">
+            <p
+              style={{
+                margin:     0,
+                fontSize:   12,
+                color:      "var(--color-text-secondary)",
+                lineHeight: 1.6,
+                maxWidth:   340,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {changelog}
+            </p>
+          </SettingRow>
+        )}
+        {updateResult && !changelog && (
+          <SettingRow label="Changelog">
+            <span style={{ ...styles.valueMono, opacity: 0.45 }}>
+              Could not fetch — check your connection
+            </span>
+          </SettingRow>
+        )}
       </Section>
 
       {/* ── Section: About ───────────────────────────────────────────────── */}
@@ -665,14 +756,20 @@ export default function SettingsPage() {
 function Section({
   icon,
   title,
+  id,
   children,
 }: {
-  icon: React.ReactNode;
-  title: string;
-  children: React.ReactNode;
+  icon:      React.ReactNode;
+  title:     string;
+  id?:       string;
+  children:  React.ReactNode;
 }) {
   return (
-    <section style={styles.section} aria-labelledby={`section-${title.toLowerCase().replace(/ /g, "-")}`}>
+    <section
+      id={id}
+      style={styles.section}
+      aria-labelledby={`section-${title.toLowerCase().replace(/ /g, "-")}`}
+    >
       <div style={styles.sectionHeader}>
         <span style={styles.sectionIcon} aria-hidden="true">{icon}</span>
         <h2

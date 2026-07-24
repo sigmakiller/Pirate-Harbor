@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ToastContainer — Renders the active toast queue.
  *
  * Mount once inside AppLayout. Toasts appear bottom-right, auto-dismiss.
@@ -52,6 +52,16 @@ function ToastItem({ toast }: { toast: Toast }) {
         {ICONS[type]}
       </span>
       <p style={styles.message}>{message}</p>
+      {toast.action && (
+        <button
+          type="button"
+          id={`${id}-action`}
+          onClick={() => { toast.action!.onClick(); removeToast(id); }}
+          style={styles.actionBtn}
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => removeToast(id)}
@@ -118,6 +128,19 @@ const styles = {
     margin:     0,
     flex:       1,
     lineHeight: 1.4,
+  },
+  actionBtn: {
+    background:   "color-mix(in srgb, var(--color-accent, #6366f1) 15%, transparent)",
+    border:       "1px solid color-mix(in srgb, var(--color-accent, #6366f1) 40%, transparent)",
+    borderRadius: 4,
+    color:        "var(--color-accent, #6366f1)",
+    cursor:       "pointer",
+    fontSize:     11,
+    fontWeight:   700,
+    padding:      "3px 8px",
+    flexShrink:   0,
+    transition:   "background 150ms",
+    whiteSpace:   "nowrap" as const,
   },
   dismissBtn: {
     background:  "none",

@@ -1,5 +1,5 @@
-import { useEffect }                              from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+﻿import { useEffect }                              from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { listen }                                  from "@tauri-apps/api/event";
 import AppLayout      from "@/layouts/AppLayout";
 import LauncherPage   from "@/pages/LauncherPage";
@@ -16,6 +16,7 @@ import YearInReviewPage     from "@/pages/YearInReviewPage";
 import EditGamePage         from "@/pages/EditGamePage";
 import ScanPage             from "@/pages/ScanPage";
 import { useToastStore } from "@/stores/useToastStore";
+import { checkForUpdates }  from "@/lib/api";
 
 /** Payload emitted by the Rust `process_changes` router (T41). */
 interface AchievementUnlockedPayload {
@@ -26,6 +27,40 @@ interface AchievementUnlockedPayload {
   milestone_id: string;
 }
 
+
+/**
+ * T57 — Checks for updates 5 s after mount (non-blocking).
+ * Must be rendered inside <BrowserRouter> to use useNavigate.
+ */
+function UpdateChecker() {
+  const { addToast } = useToastStore();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        const result = await checkForUpdates();
+        if (result.available && result.version) {
+          addToast({
+            message:  `Update available: v${result.version}`,
+            type:     "info",
+            duration: 10000,   // 10 s — give the user time to click
+            action: {
+              label:   "View",
+              onClick: () => navigate("/settings#updates"),
+            },
+          });
+        }
+      } catch {
+        // Silently ignore — network unavailable / dev mode
+      }
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [addToast, navigate]);
+
+  return null;
+}
 export default function App() {
   const { addToast } = useToastStore();
 
@@ -51,6 +86,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <UpdateChecker />
       <Routes>
         {/* Redirect root to launcher (home screen) */}
         <Route path="/" element={<Navigate to="/launcher" replace />} />
