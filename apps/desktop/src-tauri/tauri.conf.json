@@ -31,11 +31,18 @@
     "dialog": {
       "open": true,
       "save": false
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/sigmakiller/Pirate-Harbor/releases/latest/download/latest.json"
+      ],
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE2NkU1RDQyMjRDRDZFRjAKUldUd2JzMGtRbDF1cGt5Mm0raDMyc0g3V3pGakNsQmlYMmUrcXZ1bXluY0oreU9LUEJHS1hpcmYK"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "msi"],
     "resources": ["resources/plugins/*"],
     "icon": [
       "icons/32x32.png",
@@ -43,6 +50,16 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "allowDowngrades": false,
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installMode": "currentUser",
+        "startMenuFolder": "Pirate Harbor"
+      }
+    }
   }
 }
