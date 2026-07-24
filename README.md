@@ -129,6 +129,25 @@ pirate-harbor/
 
 ---
 
+## Installation
+
+> **Windows only** — macOS / Linux builds are not yet packaged.
+
+### Pre-built Installer (recommended)
+
+1. Go to the [**Releases page**](https://github.com/sigmakiller/Pirate-Harbor/releases/latest).
+2. Download **`Pirate-Harbor_x.x.x_x64-setup.exe`**.
+3. Run the installer — it installs to `%LOCALAPPDATA%\Programs\Pirate Harbor` (no admin required).
+4. A **Start Menu** shortcut ("Pirate Harbor") is created automatically.
+
+> **Windows SmartScreen** may show an "Unknown publisher" warning on first run (v0.1 beta is unsigned). Click **"More info → Run anyway"** to proceed.
+
+### Automatic Updates
+
+Pirate Harbor checks for updates on startup. When a new version is available, a notification will appear in the app. Updates are signed with an Ed25519 keypair and verified before installation.
+
+---
+
 ## Getting Started
 
 ### Prerequisites
