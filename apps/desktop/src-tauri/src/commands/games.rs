@@ -44,7 +44,12 @@ const SELECT_GAME: &str =
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
-/// Get all games, optionally filtered and searched.
+/// Get all games, optionally filtered, searched, and paginated.
+///
+/// T58: `filters.limit` / `filters.offset` enable LIMIT/OFFSET pagination
+/// so callers processing 5000+ games can page through results efficiently.
+/// When `limit` is `None` the query returns all matching rows (default
+/// behaviour — backwards-compatible with all existing frontend callers).
 #[tauri::command]
 pub fn get_all_games(
     state: State<DbState>,
@@ -73,6 +78,13 @@ pub fn get_all_games(
     }
 
     sql.push_str(" ORDER BY LOWER(title) ASC");
+
+    // T58: Optional LIMIT / OFFSET for pagination.
+    // Using -1 as LIMIT means "no limit" in SQLite.
+    if let Some(limit) = filters.limit {
+        let offset = filters.offset.unwrap_or(0);
+        sql.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+    }
 
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 

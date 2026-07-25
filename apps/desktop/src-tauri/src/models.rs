@@ -97,10 +97,14 @@ pub struct UpdateGame {
 /// Filter parameters for searching the library.
 #[derive(Debug, Default, Deserialize)]
 pub struct GameFilters {
-    pub query:        Option<String>,
-    pub status:       Option<GameStatus>,
-    pub genre:        Option<String>,
+    pub query:         Option<String>,
+    pub status:        Option<GameStatus>,
+    pub genre:         Option<String>,
     pub favorites_only: Option<bool>,
+    /// T58: Maximum rows to return (for pagination). `None` = all rows.
+    pub limit:         Option<i64>,
+    /// T58: Row offset for pagination. Defaults to 0.
+    pub offset:        Option<i64>,
 }
 
 // ── Session ───────────────────────────────────────────────────────────────────

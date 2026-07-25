@@ -21,7 +21,7 @@ use rusqlite::Connection;
 /// Increment this whenever a new MIGRATION_NNN is added.
 // T35: Consumed by the diagnostics command via `db::CURRENT_SCHEMA_VERSION`.
 #[allow(dead_code)]
-pub const CURRENT_SCHEMA_VERSION: i32 = 8;
+pub const CURRENT_SCHEMA_VERSION: i32 = 9;
 
 // ── Versioned migration table ─────────────────────────────────────────────────
 
@@ -45,6 +45,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 6, description: "Milestones",               sql: MIGRATION_006 },
     Migration { version: 7, description: "FTS5 search",              sql: MIGRATION_007 },
     Migration { version: 8, description: "Achievement tracking",     sql: MIGRATION_008 },
+    Migration { version: 9, description: "Perf indexes (T58)",       sql: MIGRATION_009 },
 ];
 
 // ── SQL strings ───────────────────────────────────────────────────────────────
@@ -294,6 +295,26 @@ const MIGRATION_008_ALTER: &[(&str, &str, &str)] = &[
     ("games", "achievement_tracking_enabled", "INTEGER NOT NULL DEFAULT 0"),
     ("games", "steam_app_id",                 "TEXT"),
 ];
+
+// ── Migration 009 — Performance indexes (T58) ─────────────────────────────────
+//
+// Adds two composite indexes to speed up the most expensive analytics queries:
+//
+//   idx_sessions_started      — sessions(started_at)
+//     Used by:  year-in-review BETWEEN queries, date heatmap, streak engine.
+//     Allows SQLite to use a B-tree range scan instead of a full table scan.
+//
+//   idx_sessions_game_started — sessions(game_id, started_at)
+//     Used by:  top-games-per-year queries (GROUP BY game_id, WHERE started_at).
+//     Covers both the filter predicate and the GROUP BY in a single scan.
+
+const MIGRATION_009: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_sessions_started
+    ON sessions(started_at);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_game_started
+    ON sessions(game_id, started_at);
+"#;
 
 // ── Version helpers ───────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 //! T37 — Integration Testing & Acceptance
 //!
-//! Full acceptance test suite covering all Phase 4 features:
+//! Full acceptance test suite covering all Phase 4–6 features:
 //!   - Migration versioning (T26)
 //!   - Background job scheduler (T27)
 //!   - Asset manager: stats, cleanup (T28)
@@ -8,6 +8,7 @@
 //!   - Export: valid JSON, readable Markdown (T32)
 //!   - Backup: create → verify → restore (T33)
 //!   - Diagnostics: schema version, table counts (T35)
+//!   - Scale tests: FTS5 + year-in-review at 5000 games/sessions (T58)
 //!
 //! # Design Notes
 //!
@@ -26,6 +27,8 @@ mod tests {
     use crate::background::scheduler::JobScheduler;
     use crate::background::job::JobStatus;
     use crate::assets::asset_manager::AssetManager;
+    use crate::analytics::year_in_review::year_in_review;
+    use crate::analytics::heatmap::build_heatmap;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -489,5 +492,124 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1, "sessions table (which has FK to games) must exist");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // T58 — Scale & Performance (5 000 games / sessions)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Seed a DB with `n` games AND one session per game.
+    ///
+    /// Sessions are spread across the target `year` (month = i % 12 + 1,
+    /// day = 1) so year-in-review and heatmap queries have data to aggregate.
+    /// Everything runs in a single transaction to avoid debug-build I/O skew.
+    fn seed_5000(conn: &Connection, n: usize, year: i32) {
+        conn.execute_batch("BEGIN").unwrap();
+        for i in 0..n {
+            let game_id = format!("g5k{}", i);
+            let title   = format!("Scale Game {}", i);
+            let genre   = if i % 3 == 0 { "RPG" }
+                          else if i % 3 == 1 { "Action" }
+                          else { "Strategy" };
+            conn.execute(
+                "INSERT INTO games (id, title, exe_path, genre, status, added_at) \
+                 VALUES (?1, ?2, '/scale/game.exe', ?3, 'playing', ?4)",
+                rusqlite::params![
+                    game_id,
+                    title,
+                    genre,
+                    format!("{}-01-01T00:00:00Z", year),
+                ],
+            ).unwrap();
+
+            // One session per game — month cycles 1–12, always day 1.
+            let month   = (i % 12) + 1;
+            let sess_id = format!("s5k{}", i);
+            let started = format!("{}-{:02}-01T10:00:00Z", year, month);
+            conn.execute(
+                "INSERT INTO sessions (id, game_id, started_at, ended_at, duration_secs) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    sess_id,
+                    format!("g5k{}", i),
+                    started,
+                    format!("{}-{:02}-01T11:00:00Z", year, month),
+                    3600i64,
+                ],
+            ).unwrap();
+        }
+        conn.execute_batch("COMMIT").unwrap();
+    }
+
+    /// FTS5 prefix search on 5 000 games must complete in < 100 ms.
+    #[test]
+    fn t58_fts5_search_sub_100ms_on_5000_games() {
+        let conn = migrated_db();
+        seed_5000(&conn, 5_000, 2024);
+
+        let t0 = std::time::Instant::now();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM games_fts WHERE games_fts MATCH 'Scale*'",
+            [],
+            |r| r.get(0),
+        ).unwrap();
+        let elapsed = t0.elapsed();
+
+        assert!(count > 0,
+            "FTS5 must find at least 1 result for 'Scale*' in 5000 games, got 0");
+        assert!(elapsed.as_millis() < 100,
+            "FTS5 search on 5000 games must complete in <100ms, got {}ms",
+            elapsed.as_millis());
+    }
+
+    /// `year_in_review` must return a coherent summary in < 500 ms
+    /// when the DB contains 5 000 games and 5 000 sessions.
+    #[test]
+    fn t58_year_in_review_sub_500ms_on_5000_sessions() {
+        let conn = migrated_db();
+        seed_5000(&conn, 5_000, 2024);
+
+        let t0  = std::time::Instant::now();
+        let yir = year_in_review(&conn, 2024)
+            .expect("year_in_review must succeed on 5000 sessions");
+        let elapsed = t0.elapsed();
+
+        // Correctness: 5000 sessions × 3600 s each.
+        assert_eq!(yir.sessions, 5_000,
+            "year_in_review must count all 5000 sessions");
+        assert_eq!(yir.total_playtime_secs, 5_000 * 3_600,
+            "Total playtime must equal 5000 × 3600 s");
+        assert!(yir.most_active_month.is_some(),
+            "year_in_review must identify a most-active month");
+
+        // Performance: must finish in < 500 ms.
+        assert!(elapsed.as_millis() < 500,
+            "year_in_review on 5000 sessions must complete in <500ms, got {}ms",
+            elapsed.as_millis());
+    }
+
+    /// `build_heatmap` must complete in < 200 ms with 5 000 sessions.
+    ///
+    /// Migration 009 adds `idx_sessions_started` specifically for this path.
+    #[test]
+    fn t58_heatmap_sub_200ms_on_5000_sessions() {
+        let conn = migrated_db();
+        seed_5000(&conn, 5_000, 2024);
+
+        let t0      = std::time::Instant::now();
+        let heatmap = build_heatmap(&conn)
+            .expect("build_heatmap must succeed on 5000 sessions");
+        let elapsed = t0.elapsed();
+
+        // Correctness: all 168 cells (7 days × 24 hours).
+        assert_eq!(heatmap.cells.len(), 168,
+            "Heatmap must have 7 × 24 = 168 cells");
+        assert!(heatmap.total_sessions > 0,
+            "Heatmap total_sessions must be > 0 after seeding");
+
+        // Performance: must finish in < 200 ms.
+        assert!(elapsed.as_millis() < 200,
+            "build_heatmap on 5000 sessions must complete in <200ms, got {}ms",
+            elapsed.as_millis());
     }
 }
