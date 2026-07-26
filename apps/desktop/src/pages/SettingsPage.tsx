@@ -107,16 +107,10 @@ export default function SettingsPage() {
     try {
       const result = await checkForUpdates();
       setUpdateResult(result);
-      // Also try to fetch changelog from the releases endpoint
-      try {
-        const resp = await fetch(
-          "https://raw.githubusercontent.com/sigmakiller/Pirate-Harbor/main/releases/latest.json"
-        );
-        if (resp.ok) {
-          const data = await resp.json() as { notes?: string; version?: string };
-          setChangelog(data.notes ?? null);
-        }
-      } catch { /* offline / CORS — ignore */ }
+      // M2: reuse notes already returned by the Tauri updater plugin
+      // (populated from the same GitHub Releases manifest as the endpoint in
+      // tauri.conf.json). No second HTTP fetch needed, no CORS risk.
+      setChangelog(result.notes ?? null);
     } catch {
       setUpdateResult({ available: false, version: null, notes: null });
     } finally {

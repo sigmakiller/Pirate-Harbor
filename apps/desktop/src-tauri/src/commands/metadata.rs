@@ -12,6 +12,11 @@ use crate::api::rawg::{RawgClient, RawgGame};
 use crate::db::DbState;
 use crate::images::{downloader, processor, ImagePaths, ImageType};
 
+// M3: Declared here (top of file) so it is visible before first use in
+// `get_stale_games_count` (line ~421) and `MetadataRefreshJob` (line ~574).
+/// Age threshold in days after which a metadata cache entry is considered stale.
+const STALE_DAYS: i64 = 30;
+
 // ── Models ────────────────────────────────────────────────────────────────────
 
 /// Metadata search result returned to frontend
@@ -552,8 +557,6 @@ pub struct MetadataRefreshJob {
     pub api_key: Option<String>,
 }
 
-/// Age threshold in days after which a cache entry is considered stale.
-const STALE_DAYS: i64 = 30;
 
 impl crate::background::Job for MetadataRefreshJob {
     fn name(&self) -> &str { "metadata_refresh" }

@@ -33,6 +33,7 @@
       "save": false
     },
     "updater": {
+      "active": true,
       "endpoints": [
         "https://github.com/sigmakiller/Pirate-Harbor/releases/latest/download/latest.json"
       ],

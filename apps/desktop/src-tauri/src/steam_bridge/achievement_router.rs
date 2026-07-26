@@ -104,9 +104,20 @@ pub fn process_changes(
 
         let Ok((_mapping_id, display_name, description, points)) = mapping else { continue };
 
+        // M1: Use the Goldberg-reported unlock timestamp as the achievement date.
+        // This gives accurate history even when the watcher fires with some delay.
+        // Falls back to now() when earned_time == 0 (achievement already earned
+        // before tracking was set up, or Goldberg did not write a timestamp).
+        let ach_date = new_state.0.get(steam_id)
+            .map(|e| e.earned_time)
+            .filter(|&t| t > 0)
+            .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+        let now = chrono::Utc::now().to_rfc3339();  // used only for created_at / updated_at
+
         // Create a milestone for the unlocked achievement.
         let milestone_id = uuid::Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
         conn.execute(
             "INSERT INTO milestones
              (id, game_id, title, description, category, difficulty,
@@ -114,7 +125,7 @@ pub fn process_changes(
              VALUES (?1,?2,?3,?4,'achievement','auto',?5,?6,?7,?7)",
             rusqlite::params![
                 milestone_id, game_id, display_name, description,
-                now, points, now,
+                ach_date, points, now,
             ],
         ).map_err(|e| e.to_string())?;
 
