@@ -128,6 +128,7 @@ pub fn run() {
             commands::games::update_game,
             commands::games::delete_game,
             commands::games::toggle_favorite,
+            commands::games::get_library_facets,   // T59
             // ── Settings ──────────────────────────────────────────────────────
             commands::settings::get_setting,
             commands::settings::set_setting,

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * api.ts — Typed Tauri invoke() wrappers.
  *
  * Every function here maps 1:1 to a Rust #[tauri::command] registered
@@ -67,6 +67,24 @@ export async function deleteGame(id: string): Promise<void> {
  */
 export async function toggleFavorite(id: string): Promise<Game> {
   return invoke<Game>("toggle_favorite", { id });
+}
+
+// T59: Library facets for filter drawer
+/** Distinct genres and developers available in the library. */
+export interface LibraryFacets {
+  /** Unique sorted genre segments, split from comma-joined values. */
+  genres:     string[];
+  /** Unique sorted developer names. */
+  developers: string[];
+}
+
+/**
+ * Return distinct genres and developers present in the library.
+ * Genres are comma-split so "RPG, Action" contributes "RPG" and "Action".
+ * Called when the filter drawer opens.
+ */
+export async function getLibraryFacets(): Promise<LibraryFacets> {
+  return invoke<LibraryFacets>("get_library_facets");
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ import {
   Search,
   Star,
   FolderSearch,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 
@@ -28,7 +29,8 @@ import { GameListRow }     from "@/components/GameListRow";
 import { EnrichmentProgressBar } from "@/components/EnrichmentProgressBar";
 import { StaleBanner }          from "@/components/StaleBanner";
 import { GhostGrid }      from "@/components/SkeletonLoader";
-import { getAllGames, startBulkEnrichmentJob, cancelJob, getStaleGamesCount, getSetting, setSetting } from "@/lib/api";
+import { getAllGames, getLibraryFacets, startBulkEnrichmentJob, cancelJob, getStaleGamesCount, getSetting, setSetting } from "@/lib/api";
+import type { LibraryFacets } from "@/lib/api";
 import { useLibraryStore } from "@/stores/useLibraryStore";
 import { useEnrichmentProgress } from "@/hooks/useEnrichmentProgress";
 import { useGridArrowNav } from "@/hooks/useGridArrowNav";
@@ -68,19 +70,46 @@ export default function LibraryPage() {
   const [bannerRefreshing, setBannerRefreshing] = useState(false);
   const { addToast } = useToastStore();
 
-  // ── UI state — from Zustand store (persists across navigation) ───────────────
+  // -- T59: Filter drawer state --------------------------------------------
+  const [drawerOpen,   setDrawerOpen]   = useState(false);
+  const [facets,       setFacets]       = useState<LibraryFacets>({ genres: [], developers: [] });
+  const [facetsLoaded, setFacetsLoaded] = useState(false);
+
+  const handleOpenDrawer = async () => {
+    setDrawerOpen(true);
+    if (!facetsLoaded) {
+      try {
+        const f = await getLibraryFacets();
+        setFacets(f);
+        setFacetsLoaded(true);
+      } catch { /* non-fatal */ }
+    }
+  };
+
+  // -- UI state - from Zustand store (persists across navigation) ---
   const {
     searchQuery,
     statusFilter,
     favoritesOnly,
     viewMode,
     sortKey,
+    genreFilter,
+    developerFilter,
+    minPlaytime,
+    maxPlaytime,
+    neverPlayed,
     setSearchQuery,
     setStatusFilter,
     setFavoritesOnly,
     setViewMode,
     setSortKey,
+    setGenreFilter,
+    setDeveloperFilter,
+    setMinPlaytime,
+    setMaxPlaytime,
+    setNeverPlayed,
     clearFilters,
+    advancedFilterCount,
   } = useLibraryStore();
 
   // Debounced search (200ms) — local ref so we don't need extra state
@@ -187,7 +216,7 @@ export default function LibraryPage() {
     setGames((prev) => prev.map((g) => g.id === updated.id ? updated : g));
   }, []);
 
-  // ── Filtering + sorting (client-side) ───────────────────────────────────────
+  // -- Filtering + sorting (client-side) -----------------------------------
   const displayed = useMemo(() => {
     let list = [...games];
 
@@ -201,36 +230,43 @@ export default function LibraryPage() {
       );
     }
 
-    if (statusFilter) {
-      list = list.filter((g) => g.status === statusFilter);
-    }
+    if (statusFilter) list = list.filter((g) => g.status === statusFilter);
+    if (favoritesOnly) list = list.filter((g) => g.is_favorite);
 
-    if (favoritesOnly) {
-      list = list.filter((g) => g.is_favorite);
+    // T59: Advanced filters
+    if (genreFilter) {
+      list = list.filter((g) =>
+        g.genre?.split(',').map((s) => s.trim()).includes(genreFilter)
+      );
     }
+    if (developerFilter) {
+      const dl = developerFilter.toLowerCase();
+      list = list.filter((g) => g.developer?.toLowerCase().includes(dl));
+    }
+    if (neverPlayed) list = list.filter((g) => g.total_playtime_secs === 0);
+    if (minPlaytime != null) list = list.filter((g) => g.total_playtime_secs >= minPlaytime * 60);
+    if (maxPlaytime != null) list = list.filter((g) => g.total_playtime_secs <= maxPlaytime * 60);
 
     list.sort((a, b) => {
       switch (sortKey as SortKey) {
-        case "title":
-          return a.title.localeCompare(b.title);
-        case "playtime":
-          return b.total_playtime_secs - a.total_playtime_secs;
-        case "last_played": {
+        case 'title':  return a.title.localeCompare(b.title);
+        case 'playtime': return b.total_playtime_secs - a.total_playtime_secs;
+        case 'last_played': {
           const ta = a.last_played ? new Date(a.last_played).getTime() : 0;
           const tb = b.last_played ? new Date(b.last_played).getTime() : 0;
           return tb - ta;
         }
-        case "added":
-          return new Date(b.added_at).getTime() - new Date(a.added_at).getTime();
-        default:
-          return 0;
+        case 'added': return new Date(b.added_at).getTime() - new Date(a.added_at).getTime();
+        default: return 0;
       }
     });
 
     return list;
-  }, [games, debouncedQuery, statusFilter, favoritesOnly, sortKey]);
+  }, [games, debouncedQuery, statusFilter, favoritesOnly, sortKey,
+      genreFilter, developerFilter, neverPlayed, minPlaytime, maxPlaytime]);
 
-  const hasFilters = debouncedQuery || statusFilter || favoritesOnly;
+  const advCount = advancedFilterCount();
+  const hasFilters = !!(debouncedQuery || statusFilter || favoritesOnly || advCount > 0);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -355,6 +391,27 @@ export default function LibraryPage() {
           </button>
         </div>
 
+        {/* T59: Filter toggle button with active-filter badge */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            id="library-filter-btn"
+            onClick={handleOpenDrawer}
+            style={{
+              ...styles.chip,
+              display: 'flex', alignItems: 'center', gap: 6,
+              ...(advCount > 0 ? styles.chipActive : {}),
+            }}
+            aria-expanded={drawerOpen}
+            aria-label="Toggle filter drawer"
+          >
+            <SlidersHorizontal size={11} aria-hidden="true" />
+            Filters
+            {advCount > 0 && (
+              <span style={styles.badge}>{advCount}</span>
+            )}
+          </button>
+        </div>
+
         {/* Sort + view toggle */}
         <div style={styles.controls}>
           <select
@@ -398,6 +455,80 @@ export default function LibraryPage() {
           </div>
         </div>
       </div>
+
+      {/* T59: Collapsible filter drawer */}
+      {drawerOpen && (
+        <div style={styles.drawer} role="region" aria-label="Advanced filters">
+          <div style={styles.drawerRow}>
+            <span style={styles.drawerLabel}>Genre</span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {facets.genres.map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setGenreFilter(genreFilter === g ? null : g)}
+                  style={{ ...styles.chip, ...(genreFilter === g ? styles.chipActive : {}) }}
+                  aria-pressed={genreFilter === g}
+                >{g}</button>
+              ))}
+              {facets.genres.length === 0 && <span style={styles.drawerHint}>No genres in library</span>}
+            </div>
+          </div>
+          <div style={styles.drawerRow}>
+            <span style={styles.drawerLabel}>Developer</span>
+            <input
+              id="filter-developer"
+              type="text"
+              placeholder="Search developer…"
+              value={developerFilter ?? ''}
+              onChange={(e) => setDeveloperFilter(e.target.value || null)}
+              style={styles.drawerInput}
+              aria-label="Filter by developer"
+            />
+          </div>
+          <div style={styles.drawerRow}>
+            <span style={styles.drawerLabel}>Playtime</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                id="filter-min-playtime"
+                type="number" min="0" placeholder="Min h"
+                value={minPlaytime ?? ''}
+                onChange={(e) => setMinPlaytime(e.target.value ? Number(e.target.value) * 60 : null)}
+                style={{ ...styles.drawerInput, width: 72 }}
+                aria-label="Minimum playtime in hours"
+              />
+              <span style={{ color: 'var(--color-text-disabled)', fontSize: 11 }}>–</span>
+              <input
+                id="filter-max-playtime"
+                type="number" min="0" placeholder="Max h"
+                value={maxPlaytime != null ? maxPlaytime / 60 : ''}
+                onChange={(e) => setMaxPlaytime(e.target.value ? Number(e.target.value) * 60 : null)}
+                style={{ ...styles.drawerInput, width: 72 }}
+                aria-label="Maximum playtime in hours"
+              />
+            </div>
+          </div>
+          <div style={styles.drawerRow}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                id="filter-never-played"
+                type="checkbox"
+                checked={neverPlayed}
+                onChange={(e) => setNeverPlayed(e.target.checked)}
+                aria-label="Show never played games only"
+              />
+              <span style={styles.drawerLabel}>Never played</span>
+            </label>
+          </div>
+          <div style={{ ...styles.drawerRow, borderTop: '1px solid var(--color-border)', paddingTop: 12, justifyContent: 'flex-end' }}>
+            <button onClick={() => { clearFilters(); setDrawerOpen(false); }} style={styles.ghostBtn}>
+              Clear Filters
+            </button>
+            <button onClick={() => setDrawerOpen(false)} style={{ ...styles.ghostBtn, marginLeft: 8 }}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Error ────────────────────────────────────────────────────────── */}
       {error && (
@@ -727,5 +858,56 @@ const styles = {
     fontWeight:    500,
     textAlign:     "center" as const,
     borderBottom:  "1px solid var(--color-border)",
+  },
+  // T59 filter drawer styles
+  drawer: {
+    background:    "var(--color-surface)",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  2,
+    padding:       "20px 24px",
+    marginBottom:  24,
+    display:       "flex",
+    flexDirection: "column" as const,
+    gap:           16,
+  },
+  drawerRow: {
+    display:    "flex",
+    alignItems: "center",
+    gap:        16,
+  },
+  drawerLabel: {
+    fontFamily:    "var(--font-mono)",
+    fontSize:      10,
+    letterSpacing: "0.1em",
+    textTransform: "uppercase" as const,
+    color:         "var(--color-text-disabled)",
+    width:         80,
+    flexShrink:    0,
+  },
+  drawerInput: {
+    background:   "var(--color-elevated)",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    padding:      "6px 10px",
+    fontSize:     12,
+    fontFamily:   "var(--font-body)",
+    color:        "var(--color-text-primary)",
+    outline:      "none",
+    width:        200,
+  },
+  drawerHint: {
+    fontSize:   11,
+    fontFamily: "var(--font-mono)",
+    color:      "var(--color-text-disabled)",
+  },
+  badge: {
+    background:    "var(--color-text-primary)",
+    color:         "var(--color-base)",
+    borderRadius:  8,
+    fontSize:      9,
+    fontFamily:    "var(--font-mono)",
+    fontWeight:    700,
+    padding:       "1px 5px",
+    lineHeight:    "1.4",
   },
 } satisfies Record<string, React.CSSProperties>;

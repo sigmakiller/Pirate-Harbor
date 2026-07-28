@@ -224,3 +224,68 @@ pub fn toggle_favorite(state: State<DbState>, id: String) -> Result<Game, String
     conn.query_row(&sql, [&id], row_to_game)
         .map_err(|e| e.to_string())
 }
+
+// ── T59: Library Facets ──────────────────────────────────────────────────────
+
+use serde::Serialize;
+
+/// Distinct filter values derived from the current library.
+///
+/// Used by the filter drawer to populate genre chips and developer autocomplete.
+/// Genres are split on `", "` so a single `"RPG, Action"` value contributes
+/// two separate entries — matching the way the frontend filters apply them.
+#[derive(Debug, Serialize)]
+pub struct LibraryFacets {
+    /// Sorted list of distinct genre strings (each comma-split segment).
+    pub genres:     Vec<String>,
+    /// Sorted list of distinct non-null developer strings.
+    pub developers: Vec<String>,
+}
+
+/// Return the distinct genres and developers present in the library.
+///
+/// Called once when the filter drawer opens.  Runs two fast `DISTINCT` queries
+/// and does comma-split post-processing in Rust (no schema change required).
+#[tauri::command]
+pub fn get_library_facets(state: State<DbState>) -> Result<LibraryFacets, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    // ── Genres ────────────────────────────────────────────────────────────────
+    // Games store genres as comma-separated strings like "RPG, Action".
+    // We collect every raw value and split it so each segment becomes a facet.
+    let mut genre_stmt = conn
+        .prepare("SELECT DISTINCT genre FROM games WHERE genre IS NOT NULL AND genre != ''")
+        .map_err(|e| e.to_string())?;
+
+    let raw_genres: Vec<String> = genre_stmt
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut genre_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for raw in raw_genres {
+        for segment in raw.split(',') {
+            let trimmed = segment.trim().to_string();
+            if !trimmed.is_empty() {
+                genre_set.insert(trimmed);
+            }
+        }
+    }
+
+    // ── Developers ────────────────────────────────────────────────────────────
+    let mut dev_stmt = conn
+        .prepare("SELECT DISTINCT developer FROM games WHERE developer IS NOT NULL AND developer != '' ORDER BY developer ASC")
+        .map_err(|e| e.to_string())?;
+
+    let developers: Vec<String> = dev_stmt
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(LibraryFacets {
+        genres:     genre_set.into_iter().collect(),
+        developers,
+    })
+}
