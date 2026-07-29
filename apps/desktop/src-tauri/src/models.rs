@@ -176,6 +176,11 @@ pub struct Collection {
     pub game_ids:      Vec<String>,
     /// Count of games in this collection.
     pub game_count:    i64,
+    // T60: Smart collection fields
+    /// True when this is a rule-based (auto-updating) smart collection.
+    pub is_smart:      bool,
+    /// JSON-encoded Vec<SmartRule>.  None for manual collections.
+    pub rule_json:     Option<String>,
 }
 
 /// Payload for creating a new collection.
@@ -186,6 +191,9 @@ pub struct NewCollection {
     pub cover_path:    Option<String>,
     pub cover_mode:    Option<String>,
     pub cover_game_id: Option<String>,
+    // T60
+    pub is_smart:      Option<bool>,
+    pub rule_json:     Option<String>,
 }
 
 /// Payload for updating an existing collection.
@@ -196,6 +204,41 @@ pub struct UpdateCollection {
     pub cover_path:    Option<String>,
     pub cover_mode:    Option<String>,
     pub cover_game_id: Option<String>,
+}
+
+// ── T60: Smart collection rules ───────────────────────────────────────────────
+
+/// The game field a smart rule matches against.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum SmartField {
+    Status,
+    Genre,
+    Playtime,
+    Developer,
+    IsFavorite,
+}
+
+/// Comparison operator for a smart rule.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum SmartOp {
+    Eq,
+    Contains,
+    Gt,
+    Lt,
+    IsTrue,
+}
+
+/// A single evaluation rule for a smart collection.
+///
+/// `value` is always stored as a string; the evaluator parses it according to
+/// the `field` type (e.g. minutes for Playtime, "true"/"false" for IsFavorite).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartRule {
+    pub field:    SmartField,
+    pub operator: SmartOp,
+    pub value:    String,
 }
 
 // ── Journal ───────────────────────────────────────────────────────────────────

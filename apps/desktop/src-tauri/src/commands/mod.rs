@@ -17,4 +17,5 @@ pub mod scanner;
 pub mod search;
 pub mod sessions;
 pub mod settings;
+pub mod smart_collections; // T60
 pub mod updater;  // T55

@@ -163,6 +163,10 @@ pub fn run() {
             commands::collections::add_game_to_collection,
             commands::collections::remove_game_from_collection,
             commands::collections::get_game_collections,
+            // -- T60: Smart collections
+            commands::smart_collections::create_smart_collection,
+            commands::smart_collections::evaluate_smart_collection,
+            commands::smart_collections::refresh_all_smart_collections,
             // ── Journal ───────────────────────────────────────────────────────────
             commands::journal::get_journal_entries,
             commands::journal::create_journal_entry,

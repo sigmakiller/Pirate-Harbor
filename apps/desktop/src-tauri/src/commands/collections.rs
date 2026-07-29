@@ -1,4 +1,4 @@
-//! Collections commands — Phase 2 (M2 updated).
+﻿//! Collections commands — Phase 2 (M2 updated).
 //!
 //! Curated galleries of games. Each collection has a name, optional
 //! description, an optional hero cover (derived from a linked game), and a
@@ -43,6 +43,8 @@ fn row_to_collection(
     cover_game_id: Option<String>,
     created_at:    String,
     updated_at:    String,
+    is_smart:      bool,
+    rule_json:     Option<String>,
 ) -> Collection {
     let game_ids   = load_game_ids(conn, &id);
     let game_count = game_ids.len() as i64;
@@ -57,6 +59,8 @@ fn row_to_collection(
         updated_at,
         game_ids,
         game_count,
+        is_smart,
+        rule_json,
     }
 }
 
@@ -70,7 +74,7 @@ pub fn get_collections(db_state: State<'_, DbState>) -> Result<Vec<Collection>, 
     let mut stmt = conn
         .prepare(
             "SELECT id, name, description, cover_path, cover_mode, cover_game_id,
-                    created_at, updated_at
+                    created_at, updated_at, is_smart, rule_json
              FROM collections ORDER BY created_at DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -86,12 +90,14 @@ pub fn get_collections(db_state: State<'_, DbState>) -> Result<Vec<Collection>, 
                 row.get::<_, Option<String>>(5)?,
                 row.get::<_, String>(6)?,
                 row.get::<_, String>(7)?,
+                row.get::<_, i64>(8).map(|v| v != 0).unwrap_or(false),
+                row.get::<_, Option<String>>(9)?,
             ))
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
-        .map(|(id, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at)| {
-            row_to_collection(&conn, id, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at)
+        .map(|(id, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at, is_smart, rule_json)| {
+            row_to_collection(&conn, id, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at, is_smart, rule_json)
         })
         .collect();
 
@@ -109,7 +115,7 @@ pub fn get_collection(
     let result = conn
         .query_row(
             "SELECT id, name, description, cover_path, cover_mode, cover_game_id,
-                    created_at, updated_at
+                    created_at, updated_at, is_smart, rule_json
              FROM collections WHERE id = ?1",
             rusqlite::params![id],
             |row| {
@@ -122,14 +128,16 @@ pub fn get_collection(
                     row.get::<_, Option<String>>(5)?,
                     row.get::<_, String>(6)?,
                     row.get::<_, String>(7)?,
+                    row.get::<_, i64>(8).map(|v| v != 0)?,
+                    row.get::<_, Option<String>>(9)?,
                 ))
             },
         )
         .map_err(|e| format!("Collection not found: {}", e))?;
 
-    let (cid, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at) = result;
+    let (cid, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at, is_smart, rule_json) = result;
     Ok(row_to_collection(
-        &conn, cid, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at,
+        &conn, cid, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at, is_smart, rule_json,
     ))
 }
 
@@ -147,11 +155,14 @@ pub fn create_collection(
     let id   = Uuid::new_v4().to_string();
     let now  = Utc::now().to_rfc3339();
     let cover_mode = payload.cover_mode.unwrap_or_else(|| "auto".to_string());
+    let is_smart   = payload.is_smart.unwrap_or(false);
+    let is_smart_i = if is_smart { 1i64 } else { 0i64 };
 
     conn.execute(
         "INSERT INTO collections
-             (id, name, description, cover_path, cover_mode, cover_game_id, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+             (id, name, description, cover_path, cover_mode, cover_game_id,
+              is_smart, rule_json, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
         rusqlite::params![
             id,
             payload.name.trim(),
@@ -159,6 +170,8 @@ pub fn create_collection(
             payload.cover_path,
             cover_mode,
             payload.cover_game_id,
+            is_smart_i,
+            payload.rule_json,
             now
         ],
     )
@@ -174,6 +187,8 @@ pub fn create_collection(
         payload.cover_game_id,
         now.clone(),
         now,
+        is_smart,
+        payload.rule_json,
     ))
 }
 
@@ -188,9 +203,9 @@ pub fn update_collection(
     let now  = Utc::now().to_rfc3339();
 
     // Fetch current values
-    let (cur_name, cur_desc, cur_cover_path, cur_cover_mode, cur_cover_game_id) = conn
+    let (cur_name, cur_desc, cur_cover_path, cur_cover_mode, cur_cover_game_id, cur_is_smart, cur_rule_json) = conn
         .query_row(
-            "SELECT name, description, cover_path, cover_mode, cover_game_id
+            "SELECT name, description, cover_path, cover_mode, cover_game_id, is_smart, rule_json
              FROM collections WHERE id = ?1",
             rusqlite::params![id],
             |row| {
@@ -200,6 +215,8 @@ pub fn update_collection(
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, Option<String>>(4)?,
+                    row.get::<_, i64>(5).map(|v| v != 0)?,
+                    row.get::<_, Option<String>>(6)?,
                 ))
             },
         )
@@ -229,7 +246,8 @@ pub fn update_collection(
         .map_err(|e| e.to_string())?;
 
     Ok(row_to_collection(
-        &conn, id, new_name, new_desc, new_cover_path, new_cover_mode, new_cover_game, created_at, now,
+        &conn, id, new_name, new_desc, new_cover_path, new_cover_mode, new_cover_game,
+        created_at, now, cur_is_smart, cur_rule_json,
     ))
 }
 
@@ -262,10 +280,10 @@ pub fn add_game_to_collection(
     )
     .map_err(|e| e.to_string())?;
 
-    let (name, desc, cover_path, cover_mode, cover_game_id, created_at, updated_at) = conn
+    let (name, desc, cover_path, cover_mode, cover_game_id, created_at, updated_at, is_smart, rule_json) = conn
         .query_row(
             "SELECT name, description, cover_path, cover_mode, cover_game_id,
-                    created_at, updated_at
+                    created_at, updated_at, is_smart, rule_json
              FROM collections WHERE id = ?1",
             rusqlite::params![collection_id],
             |row| {
@@ -277,13 +295,16 @@ pub fn add_game_to_collection(
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, String>(5)?,
                     row.get::<_, String>(6)?,
+                    row.get::<_, i64>(7).map(|v| v != 0)?,
+                    row.get::<_, Option<String>>(8)?,
                 ))
             },
         )
         .map_err(|e| format!("Collection not found: {}", e))?;
 
     Ok(row_to_collection(
-        &conn, collection_id, name, desc, cover_path, cover_mode, cover_game_id, created_at, updated_at,
+        &conn, collection_id, name, desc, cover_path, cover_mode, cover_game_id,
+        created_at, updated_at, is_smart, rule_json,
     ))
 }
 
@@ -302,10 +323,10 @@ pub fn remove_game_from_collection(
     )
     .map_err(|e| e.to_string())?;
 
-    let (name, desc, cover_path, cover_mode, cover_game_id, created_at, updated_at) = conn
+    let (name, desc, cover_path, cover_mode, cover_game_id, created_at, updated_at, is_smart, rule_json) = conn
         .query_row(
             "SELECT name, description, cover_path, cover_mode, cover_game_id,
-                    created_at, updated_at
+                    created_at, updated_at, is_smart, rule_json
              FROM collections WHERE id = ?1",
             rusqlite::params![collection_id],
             |row| {
@@ -317,13 +338,16 @@ pub fn remove_game_from_collection(
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, String>(5)?,
                     row.get::<_, String>(6)?,
+                    row.get::<_, i64>(7).map(|v| v != 0)?,
+                    row.get::<_, Option<String>>(8)?,
                 ))
             },
         )
         .map_err(|e| format!("Collection not found: {}", e))?;
 
     Ok(row_to_collection(
-        &conn, collection_id, name, desc, cover_path, cover_mode, cover_game_id, created_at, updated_at,
+        &conn, collection_id, name, desc, cover_path, cover_mode, cover_game_id,
+        created_at, updated_at, is_smart, rule_json,
     ))
 }
 

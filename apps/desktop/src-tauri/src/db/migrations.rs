@@ -21,7 +21,7 @@ use rusqlite::Connection;
 /// Increment this whenever a new MIGRATION_NNN is added.
 // T35: Consumed by the diagnostics command via `db::CURRENT_SCHEMA_VERSION`.
 #[allow(dead_code)]
-pub const CURRENT_SCHEMA_VERSION: i32 = 9;
+pub const CURRENT_SCHEMA_VERSION: i32 = 10;
 
 // ── Versioned migration table ─────────────────────────────────────────────────
 
@@ -45,7 +45,8 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 6, description: "Milestones",               sql: MIGRATION_006 },
     Migration { version: 7, description: "FTS5 search",              sql: MIGRATION_007 },
     Migration { version: 8, description: "Achievement tracking",     sql: MIGRATION_008 },
-    Migration { version: 9, description: "Perf indexes (T58)",       sql: MIGRATION_009 },
+    Migration { version: 9,  description: "Perf indexes (T58)",       sql: MIGRATION_009 },
+    Migration { version: 10, description: "Smart collections (T60)",   sql: MIGRATION_010 },
 ];
 
 // ── SQL strings ───────────────────────────────────────────────────────────────
@@ -316,6 +317,19 @@ CREATE INDEX IF NOT EXISTS idx_sessions_game_started
     ON sessions(game_id, started_at);
 "#;
 
+/// 010 — Smart collections (T60): add is_smart flag and rule_json to collections.
+/// Actual ALTER TABLE is done idempotently in run_migrations (MIGRATION_010_ALTER).
+const MIGRATION_010: &str = r#"
+SELECT 1; -- placeholder; columns added via MIGRATION_010_ALTER
+"#;
+
+/// Columns added to `collections` by MIGRATION_010.
+/// Applied idempotently: SQLite ignores "duplicate column" errors.
+const MIGRATION_010_ALTER: &[(&str, &str, &str)] = &[
+    ("collections", "is_smart", "INTEGER NOT NULL DEFAULT 0"),
+    ("collections", "rule_json", "TEXT"),
+];
+
 // ── Version helpers ───────────────────────────────────────────────────────────
 
 /// Read the current schema version from the `settings` table.
@@ -407,6 +421,14 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         // Migration 8 has additional ALTER TABLE statements for `games`.
         if migration.version == 8 {
             for (table, column, col_type) in MIGRATION_008_ALTER {
+                let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, col_type);
+                let _ = conn.execute_batch(&sql); // Ignore "duplicate column" errors.
+            }
+        }
+
+        // Migration 10 adds two columns to `collections`.
+        if migration.version == 10 {
+            for (table, column, col_type) in MIGRATION_010_ALTER {
                 let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, col_type);
                 let _ = conn.execute_batch(&sql); // Ignore "duplicate column" errors.
             }

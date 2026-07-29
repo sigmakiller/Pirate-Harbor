@@ -293,6 +293,9 @@ export interface Collection {
   updated_at:    string;
   game_ids:      string[];
   game_count:    number;
+  // T60: Smart collection fields
+  is_smart:      boolean;
+  rule_json:     string | null;
 }
 
 export interface NewCollection {
@@ -301,6 +304,9 @@ export interface NewCollection {
   cover_path?:    string | null;
   cover_mode?:    'auto' | 'custom';
   cover_game_id?: string | null;
+  // T60
+  is_smart?:      boolean;
+  rule_json?:     string | null;
 }
 
 export interface UpdateCollection {
@@ -309,6 +315,22 @@ export interface UpdateCollection {
   cover_path?:    string | null;
   cover_mode?:    'auto' | 'custom';
   cover_game_id?: string | null;
+}
+
+// T60: Smart collection types
+export type SmartField = 'status' | 'genre' | 'playtime' | 'developer' | 'is_favorite';
+export type SmartOp    = 'eq' | 'contains' | 'gt' | 'lt' | 'is_true';
+
+export interface SmartRule {
+  field:    SmartField;
+  operator: SmartOp;
+  value:    string;
+}
+
+export interface SmartCollectionCreated {
+  id:          string;
+  name:        string;
+  match_count: number;
 }
 
 export async function getCollections(): Promise<Collection[]> {
@@ -342,6 +364,23 @@ export async function removeGameFromCollection(collectionId: string, gameId: str
 export async function getGameCollections(gameId: string): Promise<string[]> {
   return invoke<string[]>("get_game_collections", { gameId });
 }
+
+// T60: Smart collection commands
+export async function createSmartCollection(
+  name: string,
+  ruleJson: string,
+): Promise<SmartCollectionCreated> {
+  return invoke<SmartCollectionCreated>("create_smart_collection", { name, ruleJson });
+}
+
+export async function evaluateSmartCollection(id: string): Promise<number> {
+  return invoke<number>("evaluate_smart_collection", { id });
+}
+
+export async function refreshAllSmartCollections(): Promise<number> {
+  return invoke<number>("refresh_all_smart_collections");
+}
+
 
 // ── Journal ───────────────────────────────────────────────────────────────────
 

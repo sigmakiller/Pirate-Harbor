@@ -12,18 +12,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate }                        from "react-router-dom";
-import { Plus, X, Trash2, FolderOpen } from "lucide-react";
+import { Plus, X, Trash2, FolderOpen, Zap, Cpu } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { FilePickerButton } from "@/components/FilePickerButton";
 
 import {
   getCollections,
   createCollection,
+  createSmartCollection,
+  refreshAllSmartCollections,
   deleteCollection,
   getAllGames,
   addGameToCollection,
   removeGameFromCollection,
   type Collection,
+  type SmartRule,
+  type SmartField,
+  type SmartOp,
 } from "@/lib/api";
 import type { Game } from "@/types";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -40,8 +45,9 @@ export default function CollectionsPage() {
   // Selected collection for detail panel
   const [selected, setSelected] = useState<Collection | null>(null);
 
-  // Create-collection form
+  // Create-collection modal
   const [creating,       setCreating]       = useState(false);
+  const [createTab,      setCreateTab]      = useState<'manual' | 'smart'>('manual');
   const [newName,        setNewName]        = useState("");
   const [newDesc,        setNewDesc]        = useState("");
   const [newCoverMode,   setNewCoverMode]   = useState<'auto' | 'custom'>('auto');
@@ -49,12 +55,21 @@ export default function CollectionsPage() {
   const [saving,         setSaving]         = useState(false);
   const [createErr,      setCreateErr]      = useState<string | null>(null);
 
+  // Smart rule builder state
+  const [rules, setRules] = useState<SmartRule[]>([
+    { field: 'status', operator: 'eq', value: 'playing' },
+  ]);
+
   // Delete confirmation
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cols, gs] = await Promise.all([getCollections(), getAllGames({})]);
+    const [cols, gs] = await Promise.all([
+      getCollections(),
+      getAllGames({}),
+      refreshAllSmartCollections().catch(() => 0), // sync smart collections silently
+    ]);
     setCollections(cols);
     setGames(gs);
     setLoading(false);
@@ -80,22 +95,73 @@ export default function CollectionsPage() {
     setSaving(true);
     setCreateErr(null);
     try {
-      const col = await createCollection({
-        name:        newName.trim(),
-        description: newDesc.trim() || null,
-        cover_mode:  newCoverMode,
-        cover_path:  newCoverMode === 'custom' ? (newCoverPath.trim() || null) : null,
-      });
-      setCollections(prev => [col, ...prev]);
+      if (createTab === 'smart') {
+        // Validate rules
+        if (rules.length === 0) throw new Error('Add at least one rule.');
+        const result = await createSmartCollection(
+          newName.trim(),
+          JSON.stringify(rules),
+        );
+        // Reload all collections to get the full object back
+        const cols = await getCollections();
+        setCollections(cols);
+        void result; // match_count available but unused here
+      } else {
+        const col = await createCollection({
+          name:        newName.trim(),
+          description: newDesc.trim() || null,
+          cover_mode:  newCoverMode,
+          cover_path:  newCoverMode === 'custom' ? (newCoverPath.trim() || null) : null,
+        });
+        setCollections(prev => [col, ...prev]);
+      }
       setNewName("");
       setNewDesc("");
       setNewCoverMode('auto');
       setNewCoverPath("");
+      setRules([{ field: 'status', operator: 'eq', value: 'playing' }]);
       setCreating(false);
     } catch (err) {
       setCreateErr(String(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Smart rule helpers
+  const updateRule = (i: number, patch: Partial<SmartRule>) =>
+    setRules(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+
+  const addRule = () =>
+    setRules(prev => [...prev, { field: 'status', operator: 'eq', value: '' }]);
+
+  const removeRule = (i: number) =>
+    setRules(prev => prev.filter((_, idx) => idx !== i));
+
+  const FIELD_OPTIONS: { value: SmartField; label: string }[] = [
+    { value: 'status',      label: 'Status' },
+    { value: 'genre',       label: 'Genre' },
+    { value: 'playtime',    label: 'Playtime (min)' },
+    { value: 'developer',   label: 'Developer' },
+    { value: 'is_favorite', label: 'Favourited' },
+  ];
+
+  const opsForField = (field: SmartField): { value: SmartOp; label: string }[] => {
+    switch (field) {
+      case 'status':      return [{ value: 'eq',       label: 'is' }];
+      case 'genre':       return [{ value: 'contains', label: 'contains' }];
+      case 'playtime':    return [{ value: 'gt', label: '>' }, { value: 'lt', label: '<' }];
+      case 'developer':   return [{ value: 'eq', label: 'is' }, { value: 'contains', label: 'contains' }];
+      case 'is_favorite': return [{ value: 'is_true',  label: 'is true' }];
+    }
+  };
+
+  const defaultValue = (field: SmartField): string => {
+    switch (field) {
+      case 'status':      return 'playing';
+      case 'playtime':    return '60';
+      case 'is_favorite': return 'true';
+      default:            return '';
     }
   };
 
@@ -164,18 +230,45 @@ export default function CollectionsPage() {
         {/* Create form */}
         {creating && (
           <form onSubmit={handleCreate} style={styles.createForm} aria-label="Create collection">
-            <div style={styles.createRow}>
-              <input
-                id="new-col-name"
-                type="text"
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder="Collection name…"
-                style={styles.createInput}
-                autoFocus
-                required
-                aria-label="Collection name"
-              />
+
+            {/* Tab bar */}
+            <div style={styles.tabBar} role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={createTab === 'manual'}
+                onClick={() => setCreateTab('manual')}
+                style={{ ...styles.tabBtn, ...(createTab === 'manual' ? styles.tabBtnActive : {}) }}
+              >
+                Manual
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={createTab === 'smart'}
+                onClick={() => setCreateTab('smart')}
+                style={{ ...styles.tabBtn, ...(createTab === 'smart' ? styles.tabBtnActive : {}) }}
+              >
+                <Cpu size={11} style={{ marginRight: 4 }} />
+                Smart
+              </button>
+            </div>
+
+            {/* Name field (always shown) */}
+            <input
+              id="new-col-name"
+              type="text"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Collection name…"
+              style={styles.createInput}
+              autoFocus
+              required
+              aria-label="Collection name"
+            />
+
+            {/* Manual tab */}
+            {createTab === 'manual' && (<>
               <input
                 id="new-col-desc"
                 type="text"
@@ -185,43 +278,122 @@ export default function CollectionsPage() {
                 style={styles.createInput}
                 aria-label="Collection description"
               />
-            </div>
 
-            {/* Cover mode toggle */}
-            <div style={styles.coverModeRow} role="group" aria-label="Cover mode">
-              <button
-                type="button"
-                onClick={() => setNewCoverMode('auto')}
-                style={{
-                  ...styles.modeChip,
-                  ...(newCoverMode === 'auto' ? styles.modeChipActive : {}),
-                }}
-                aria-pressed={newCoverMode === 'auto'}
-              >
-                Auto Mosaic
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewCoverMode('custom')}
-                style={{
-                  ...styles.modeChip,
-                  ...(newCoverMode === 'custom' ? styles.modeChipActive : {}),
-                }}
-                aria-pressed={newCoverMode === 'custom'}
-              >
-                Custom Image
-              </button>
-            </div>
+              {/* Cover mode toggle */}
+              <div style={styles.coverModeRow} role="group" aria-label="Cover mode">
+                <button
+                  type="button"
+                  onClick={() => setNewCoverMode('auto')}
+                  style={{ ...styles.modeChip, ...(newCoverMode === 'auto' ? styles.modeChipActive : {}) }}
+                  aria-pressed={newCoverMode === 'auto'}
+                >
+                  Auto Mosaic
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewCoverMode('custom')}
+                  style={{ ...styles.modeChip, ...(newCoverMode === 'custom' ? styles.modeChipActive : {}) }}
+                  aria-pressed={newCoverMode === 'custom'}
+                >
+                  Custom Image
+                </button>
+              </div>
 
-            {/* Custom cover picker */}
-            {newCoverMode === 'custom' && (
-              <FilePickerButton
-                id="new-col-cover-picker"
-                value={newCoverPath}
-                onChange={(p: string) => setNewCoverPath(p)}
-                filters={[{ name: "Image", extensions: ["jpg", "jpeg", "png", "webp"] }]}
-                placeholder="Browse for cover image…"
-              />
+              {newCoverMode === 'custom' && (
+                <FilePickerButton
+                  id="new-col-cover-picker"
+                  value={newCoverPath}
+                  onChange={(p: string) => setNewCoverPath(p)}
+                  filters={[{ name: "Image", extensions: ["jpg", "jpeg", "png", "webp"] }]}
+                  placeholder="Browse for cover image…"
+                />
+              )}
+            </>)}
+
+            {/* Smart tab — rule builder */}
+            {createTab === 'smart' && (
+              <div style={styles.ruleBuilder}>
+                <p style={styles.ruleHint}>
+                  Games matching <strong>ALL</strong> rules are added automatically.
+                </p>
+                {rules.map((rule, i) => (
+                  <div key={i} style={styles.ruleRow}>
+                    {/* Field */}
+                    <select
+                      value={rule.field}
+                      onChange={e => {
+                        const f = e.target.value as SmartField;
+                        const ops = opsForField(f);
+                        updateRule(i, { field: f, operator: ops[0].value, value: defaultValue(f) });
+                      }}
+                      style={styles.ruleSelect}
+                      aria-label={`Rule ${i + 1} field`}
+                    >
+                      {FIELD_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+
+                    {/* Operator */}
+                    <select
+                      value={rule.operator}
+                      onChange={e => updateRule(i, { operator: e.target.value as SmartOp })}
+                      style={styles.ruleSelect}
+                      aria-label={`Rule ${i + 1} operator`}
+                    >
+                      {opsForField(rule.field).map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+
+                    {/* Value — hidden for is_favorite */}
+                    {rule.field !== 'is_favorite' && (
+                      rule.field === 'status' ? (
+                        <select
+                          value={rule.value}
+                          onChange={e => updateRule(i, { value: e.target.value })}
+                          style={styles.ruleSelect}
+                          aria-label={`Rule ${i + 1} value`}
+                        >
+                          {['unplayed','playing','completed','dropped'].map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={rule.field === 'playtime' ? 'number' : 'text'}
+                          value={rule.value}
+                          onChange={e => updateRule(i, { value: e.target.value })}
+                          style={{ ...styles.ruleSelect, flex: 1 }}
+                          placeholder={rule.field === 'playtime' ? 'minutes' : 'value…'}
+                          aria-label={`Rule ${i + 1} value`}
+                        />
+                      )
+                    )}
+
+                    {/* Remove rule */}
+                    {rules.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeRule(i)}
+                        style={styles.ruleRemoveBtn}
+                        aria-label={`Remove rule ${i + 1}`}
+                      >
+                        <X size={10} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={addRule}
+                  style={styles.addRuleBtn}
+                >
+                  <Plus size={10} style={{ marginRight: 4 }} />
+                  Add Rule
+                </button>
+              </div>
             )}
 
             {createErr && <p style={styles.createErr} role="alert">{createErr}</p>}
@@ -299,7 +471,12 @@ export default function CollectionsPage() {
 
                 {/* Info */}
                 <div style={styles.cardInfo}>
-                  <span style={styles.cardName}>{col.name}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {col.is_smart && (
+                      <Zap size={10} style={{ color: 'var(--color-accent)', flexShrink: 0 }} aria-label="Smart collection" />
+                    )}
+                    <span style={styles.cardName}>{col.name}</span>
+                  </div>
                   <span style={styles.cardCount}>
                     {col.game_count} {col.game_count === 1 ? "game" : "games"}
                   </span>
@@ -814,5 +991,87 @@ const styles = {
     padding:     "3px 6px",
     display:     "flex",
     transition:  "border-color 150ms, color 150ms",
+  },
+
+  // ── T60: Smart collection create UI ──────────────────────────────────────────
+  tabBar: {
+    display:        "flex",
+    gap:            4,
+    borderBottom:   "1px solid var(--color-border)",
+    paddingBottom:  8,
+    marginBottom:   4,
+  },
+  tabBtn: {
+    display:       "inline-flex",
+    alignItems:    "center",
+    background:    "none",
+    border:        "none",
+    borderRadius:  1,
+    padding:       "5px 12px",
+    fontSize:      11,
+    fontFamily:    "var(--font-mono)",
+    letterSpacing: "0.06em",
+    color:         "var(--color-text-muted)",
+    cursor:        "pointer",
+    transition:    "color 150ms, background 150ms",
+  },
+  tabBtnActive: {
+    background: "var(--color-elevated)",
+    color:      "var(--color-text-primary)",
+  },
+  ruleBuilder: {
+    display:       "flex",
+    flexDirection: "column" as const,
+    gap:           8,
+    padding:       "8px 0",
+  },
+  ruleHint: {
+    fontFamily:  "var(--font-body)",
+    fontSize:    12,
+    color:       "var(--color-text-muted)",
+    margin:      "0 0 4px",
+    lineHeight:  1.5,
+  },
+  ruleRow: {
+    display:    "flex",
+    alignItems: "center",
+    gap:        6,
+  },
+  ruleSelect: {
+    background:   "var(--color-elevated)",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    padding:      "5px 8px",
+    fontSize:     12,
+    fontFamily:   "var(--font-body)",
+    color:        "var(--color-text-primary)",
+    outline:      "none",
+    cursor:       "pointer",
+  },
+  ruleRemoveBtn: {
+    background:   "none",
+    border:       "1px solid var(--color-border)",
+    borderRadius: 1,
+    color:        "var(--color-text-disabled)",
+    cursor:       "pointer",
+    padding:      "4px 6px",
+    display:      "flex",
+    alignItems:   "center",
+    flexShrink:   0,
+  },
+  addRuleBtn: {
+    display:       "inline-flex",
+    alignItems:    "center",
+    background:    "none",
+    border:        "1px solid var(--color-border)",
+    borderRadius:  1,
+    padding:       "5px 12px",
+    fontSize:      11,
+    fontFamily:    "var(--font-mono)",
+    letterSpacing: "0.06em",
+    color:         "var(--color-text-muted)",
+    cursor:        "pointer",
+    alignSelf:     "flex-start" as const,
+    transition:    "color 150ms",
   },
 } satisfies Record<string, React.CSSProperties>;
