@@ -223,6 +223,21 @@ export async function getRawgApiKey(): Promise<string | null> {
   return invoke<string | null>("get_rawg_api_key");
 }
 
+/** T61: Result from testRawgKey. */
+export interface RawgKeyTestResult {
+  valid: boolean;
+  error: string | null;
+}
+
+/**
+ * T61: Validate a RAWG API key by making a minimal live request.
+ * Returns { valid: true } on success. Does NOT persist the key.
+ * Call setSetting("rawg_api_key", key) separately after validation.
+ */
+export async function testRawgKey(apiKey: string): Promise<RawgKeyTestResult> {
+  return invoke<RawgKeyTestResult>("test_rawg_key", { apiKey });
+}
+
 /**
  * Trigger background enrichment for the entire library.
  * Fetches metadata and downloads images for all games that haven't

@@ -420,6 +420,38 @@ pub fn get_rawg_api_key(db_state: State<'_, DbState>) -> Result<Option<String>, 
     Ok(key)
 }
 
+/// T61: Validate a RAWG API key by making a minimal live request.
+///
+/// Hits `GET /games?key=<key>&search=test&page_size=1`.
+/// Returns `{ valid: true }` on HTTP 200, `{ valid: false, error: "..." }` otherwise.
+/// The key is NOT stored — the caller is responsible for calling `set_setting` if valid.
+#[tauri::command]
+pub async fn test_rawg_key(api_key: String) -> Result<RawgKeyTestResult, String> {
+    if api_key.trim().is_empty() {
+        return Ok(RawgKeyTestResult {
+            valid: false,
+            error: Some("API key cannot be empty.".to_string()),
+        });
+    }
+
+    let client = RawgClient::new(api_key.trim().to_string());
+    // Use a simple one-result search — if the key is valid RAWG returns HTTP 200.
+    match client.search_games("test").await {
+        Ok(_) => Ok(RawgKeyTestResult { valid: true, error: None }),
+        Err(e) => Ok(RawgKeyTestResult {
+            valid: false,
+            error: Some(e),
+        }),
+    }
+}
+
+/// Result type for `test_rawg_key`.
+#[derive(Debug, Serialize)]
+pub struct RawgKeyTestResult {
+    pub valid: bool,
+    pub error: Option<String>,
+}
+
 /// T51: Return the count of games whose metadata cache is absent or older than
 /// 30 days.  Used by the stale-data notification banner in LibraryPage.
 #[tauri::command]

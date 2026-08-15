@@ -151,6 +151,7 @@ pub fn run() {
             commands::metadata::bulk_enrich_library,
             commands::metadata::get_enrichment_status,
             commands::metadata::get_rawg_api_key,
+            commands::metadata::test_rawg_key,               // T61
             commands::metadata::download_game_images,
             commands::metadata::start_bulk_enrichment_job,   // T50
             commands::metadata::get_stale_games_count,       // T51
